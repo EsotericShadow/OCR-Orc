@@ -1,0 +1,24 @@
+CompileFlags:
+  Add:
+    - -I/opt/homebrew/include
+    - -I/opt/homebrew/lib/QtCore.framework/Headers
+    - -I/opt/homebrew/lib/QtGui.framework/Headers
+    - -I/opt/homebrew/lib/QtWidgets.framework/Headers
+    - -I${workspaceFolder}/src
+    - -I${workspaceFolder}/src/core
+    - -I${workspaceFolder}/src/models
+    - -I${workspaceFolder}/src/ui
+    - -I${workspaceFolder}/src/ui/canvas
+    - -I${workspaceFolder}/src/ui/canvas/core
+    - -I${workspaceFolder}/src/ui/canvas/input
+    - -I${workspaceFolder}/src/ui/canvas/managers
+    - -I${workspaceFolder}/src/ui/canvas/ui
+    - -I${workspaceFolder}/src/ui/widgets
+  Remove:
+    - -W*
+    - -w
+Index:
+  Background: Build
+Diagnostics:
+  UnusedIncludes: None
+  MissingIncludes: None

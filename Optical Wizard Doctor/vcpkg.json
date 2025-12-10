@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "owd",
+  "version": "1.0.0",
+  "description": "Optical Wizard Doctor - PDF Coordinate Calibration Tool",
+  "dependencies": [
+    {
+      "name": "qt6",
+      "features": ["widgets"]
+    },
+    "poppler"
+  ],
+  "builtin-baseline": "2024.01.12"
+}
+

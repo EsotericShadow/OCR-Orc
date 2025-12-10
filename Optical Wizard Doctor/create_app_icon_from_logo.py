@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""
+Create macOS app icon from OCR-Orc logo
+Fast version that creates styled icon with gradient background
+"""
+
+import os
+import sys
+from PIL import Image, ImageDraw
+import subprocess
+
+def create_icon_with_background(logo_path, output_path, size=1024):
+    """Create app icon with styled background - FAST VERSION"""
+    
+    # Load the logo
+    logo = Image.open(logo_path).convert("RGBA")
+    
+    # Resize logo to fit within the icon (with padding)
+    logo_size = int(size * 0.75)  # Logo takes 75% of icon size
+    logo = logo.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
+    
+    # Create gradient background (light grey to white, diagonal)
+    corner_radius = int(size * 0.15)  # 15% corner radius for rounded corners
+    
+    # Create base image
+    icon = Image.new("RGB", (size, size), (240, 240, 240))
+    draw = ImageDraw.Draw(icon)
+    
+    # Draw diagonal gradient using rectangles (fast method)
+    num_steps = 50
+    for i in range(num_steps):
+        t = i / num_steps
+        # Interpolate from grey (224) to white (255)
+        grey_val = int(224 + (255 - 224) * t)
+        color = (grey_val, grey_val, grey_val)
+        
+        # Draw diagonal rectangle
+        x1 = int(size * t * 0.5)
+        y1 = int(size * t * 0.5)
+        x2 = int(size * (1 - (1-t) * 0.5))
+        y2 = int(size * (1 - (1-t) * 0.5))
+        
+        draw.rectangle([x1, y1, x2, y2], fill=color)
+    
+    # Create rounded corners mask
+    mask = Image.new("L", (size, size), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.rounded_rectangle(
+        [(0, 0), (size, size)],
+        corner_radius,
+        fill=255
+    )
+    
+    # Apply mask to create rounded corners
+    icon.putalpha(mask)
+    
+    # Add subtle bevel effect (highlight and shadow)
+    highlight = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    highlight_draw = ImageDraw.Draw(highlight)
+    highlight_draw.rounded_rectangle(
+        [(0, 0), (size, size)],
+        corner_radius,
+        fill=(255, 255, 255, 30)  # Subtle white overlay
+    )
+    
+    shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    shadow_draw = ImageDraw.Draw(shadow)
+    shadow_draw.rounded_rectangle(
+        [(2, 2), (size, size)],  # Slight offset
+        corner_radius,
+        fill=(0, 0, 0, 20)  # Subtle black shadow
+    )
+    
+    # Composite: shadow, base, highlight
+    final_icon = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    final_icon = Image.alpha_composite(final_icon, shadow)
+    final_icon = Image.alpha_composite(final_icon, icon)
+    final_icon = Image.alpha_composite(final_icon, highlight)
+    
+    # Center the logo on the background
+    logo_x = (size - logo_size) // 2
+    logo_y = (size - logo_size) // 2
+    
+    # Paste logo onto background
+    final_icon.paste(logo, (logo_x, logo_y), logo)
+    
+    # Save as PNG
+    final_icon.save(output_path, "PNG")
+    print(f"✓ Created icon: {output_path}")
+    
+    return final_icon
+
+def create_iconset(logo_path, iconset_dir):
+    """Create .iconset directory with all required sizes"""
+    
+    sizes = [
+        (16, "icon_16x16.png"),
+        (32, "icon_16x16@2x.png"),
+        (32, "icon_32x32.png"),
+        (64, "icon_32x32@2x.png"),
+        (128, "icon_128x128.png"),
+        (256, "icon_128x128@2x.png"),
+        (256, "icon_256x256.png"),
+        (512, "icon_256x256@2x.png"),
+        (512, "icon_512x512.png"),
+        (1024, "icon_512x512@2x.png"),
+    ]
+    
+    os.makedirs(iconset_dir, exist_ok=True)
+    
+    for size, filename in sizes:
+        output_path = os.path.join(iconset_dir, filename)
+        create_icon_with_background(logo_path, output_path, size)
+    
+    print(f"✓ Created iconset: {iconset_dir}")
+
+def create_icns(iconset_dir, icns_path):
+    """Convert .iconset to .icns using iconutil"""
+    
+    if not os.path.exists("/usr/bin/iconutil"):
+        print("ERROR: iconutil not found. Cannot create .icns file.")
+        return False
+    
+    try:
+        subprocess.run(
+            ["/usr/bin/iconutil", "-c", "icns", iconset_dir, "-o", icns_path],
+            check=True,
+            capture_output=True
+        )
+        print(f"✓ Created .icns file: {icns_path}")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"ERROR: Failed to create .icns: {e}")
+        return False
+
+def main():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    logo_path = os.path.join(script_dir, "OCR-Orc-logo.png")
+    if not os.path.exists(logo_path):
+        print(f"ERROR: Logo not found at {logo_path}")
+        sys.exit(1)
+    
+    # Create iconset directory
+    iconset_dir = os.path.join(script_dir, "AppIcon.iconset")
+    icns_path = os.path.join(script_dir, "AppIcon.icns")
+    
+    print("Creating app icon from logo...")
+    print(f"Logo: {logo_path}")
+    print(f"Iconset: {iconset_dir}")
+    print(f"ICNS: {icns_path}")
+    print()
+    
+    # Create iconset
+    create_iconset(logo_path, iconset_dir)
+    print()
+    
+    # Create .icns file
+    if create_icns(iconset_dir, icns_path):
+        print()
+        print("✓ App icon created successfully!")
+        print(f"  Location: {icns_path}")
+    else:
+        print()
+        print("⚠ .icns creation failed, but iconset is available")
+        print(f"  You can manually create .icns using:")
+        print(f"  iconutil -c icns {iconset_dir} -o {icns_path}")
+
+if __name__ == "__main__":
+    main()
+
