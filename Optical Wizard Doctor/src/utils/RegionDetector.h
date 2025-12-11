@@ -11,6 +11,12 @@
 
 namespace ocr_orc {
 
+// Forward declarations
+struct DetectedRectangle;  // Defined in RectangleDetector.h
+
+// Forward declare OCRTextRegion - we'll include the header in .cpp
+struct OCRTextRegion;
+
 /**
  * @brief Detected region from automatic detection
  */
@@ -104,6 +110,18 @@ public:
      * @return DetectionResult with detected regions and statistics
      */
     DetectionResult detectRegionsOCRFirst(const QImage& image, const QString& method = "ocr-first");
+    
+    /**
+     * @brief Match and merge results from OCR-first and rectangle detection pipelines
+     * @param ocrRegions Results from OCR-first pipeline (cv::Rect)
+     * @param rectangleRegions Results from rectangle detection pipeline (DetectedRectangle)
+     * @param image Source image
+     * @return Merged DetectionResult with matched regions (consensus-based)
+     */
+    DetectionResult matchAndMergePipelines(const QList<cv::Rect>& ocrRegions,
+                                          const QList<DetectedRectangle>& rectangleRegions,
+                                          const QImage& image,
+                                          const QList<OCRTextRegion>& ocrTextRegions);
     
     // Parameter setters
     void setMinCellSize(int width, int height);

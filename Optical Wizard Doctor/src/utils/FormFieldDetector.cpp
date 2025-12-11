@@ -257,6 +257,41 @@ cv::Rect FormFieldDetector::overfitRegion(const cv::Rect& region, const cv::Mat&
     return overfitted;
 }
 
+cv::Rect FormFieldDetector::overfitRegionAsymmetric(const cv::Rect& region, const cv::Mat& image, 
+                                                     int expandPercentX, int expandPercentY)
+{
+    if (image.empty()) {
+        return region;
+    }
+    
+    int imgWidth = image.cols;
+    int imgHeight = image.rows;
+    
+    // Calculate asymmetric expansion - EXTREME vertical expansion
+    int expandX = static_cast<int>(region.width * expandPercentX / 100.0);
+    int expandY = static_cast<int>(region.height * expandPercentY / 100.0);
+    
+    // Add minimum expansion with emphasis on vertical
+    // Horizontal: at least 25px
+    // Vertical: at least 30px (more aggressive for multi-line fields)
+    expandX = std::max(expandX, 25);
+    expandY = std::max(expandY, 30);
+    
+    // For very small regions, add even more vertical room
+    if (region.height < 20) {
+        expandY = std::max(expandY, 40);  // At least 40px vertical for small regions
+    }
+    
+    // Expand region EXTREMELY DRASTICALLY with asymmetric expansion
+    cv::Rect overfitted;
+    overfitted.x = std::max(0, region.x - expandX);
+    overfitted.y = std::max(0, region.y - expandY);
+    overfitted.width = std::min(imgWidth - overfitted.x, region.width + expandX * 2);
+    overfitted.height = std::min(imgHeight - overfitted.y, region.height + expandY * 2);
+    
+    return overfitted;
+}
+
 QList<cv::Rect> FormFieldDetector::refineOverfittedRegions(const QList<cv::Rect>& overfittedRegions, 
                                                            const cv::Mat& image)
 {
@@ -348,9 +383,69 @@ QList<cv::Rect> FormFieldDetector::refineOverfittedRegions(const QList<cv::Rect>
             }
         }
         
-        // If we found a good field, use it; otherwise use original overfitted region
+        // If we found a good field, enhance it with hard edges (above, left, right) and more vertical height
         if (bestField.width > 0 && bestField.height > 0) {
-            refined.append(bestField);
+            // Find hard edges: ABOVE, LEFT, and RIGHT
+            int edgeY = findHardEdgeAbove(bestField, image, 80);  // Search 80px above
+            int edgeXLeft = findHardEdgeLeft(bestField, image, 80);  // Search 80px left
+            int edgeXRight = findHardEdgeRight(bestField, image, 80);  // Search 80px right
+            
+            cv::Rect enhancedField = bestField;
+            
+            // Lock to hard edge ABOVE
+            if (edgeY >= 0) {
+                int currentTop = bestField.y;
+                int newTop = edgeY;
+                int heightIncrease = currentTop - newTop;
+                
+                enhancedField.y = newTop;
+                enhancedField.height = bestField.height + heightIncrease;
+            } else {
+                // No edge found above, but still increase vertical height
+                int heightIncrease = static_cast<int>(bestField.height * 0.5);
+                enhancedField.y = std::max(0, bestField.y - heightIncrease);
+                enhancedField.height = bestField.height + heightIncrease;
+            }
+            
+            // Lock to hard edge LEFT
+            if (edgeXLeft >= 0) {
+                int currentLeft = bestField.x;
+                int newLeft = edgeXLeft;
+                int widthIncrease = currentLeft - newLeft;
+                
+                enhancedField.x = newLeft;
+                enhancedField.width = bestField.width + widthIncrease;
+            } else {
+                // Extend left by 20% if no edge found
+                int widthIncrease = static_cast<int>(bestField.width * 0.2);
+                enhancedField.x = std::max(0, bestField.x - widthIncrease);
+                enhancedField.width = bestField.width + widthIncrease;
+            }
+            
+            // Lock to hard edge RIGHT
+            if (edgeXRight >= 0) {
+                int currentRight = bestField.x + bestField.width;
+                int newRight = edgeXRight;
+                int widthIncrease = newRight - currentRight;
+                
+                enhancedField.width = bestField.width + widthIncrease;
+            } else {
+                // Extend right by 20% if no edge found
+                int widthIncrease = static_cast<int>(bestField.width * 0.2);
+                enhancedField.width = bestField.width + widthIncrease;
+            }
+            
+            // Also extend downward for more vertical room (especially for multi-line fields)
+            int downwardExtension = static_cast<int>(bestField.height * 0.8);  // 80% more height downward
+            enhancedField.height += downwardExtension;
+            
+            // Clamp to image bounds
+            enhancedField.x = std::max(0, enhancedField.x);
+            enhancedField.y = std::max(0, enhancedField.y);
+            enhancedField.width = std::min(image.cols - enhancedField.x, enhancedField.width);
+            enhancedField.height = std::min(image.rows - enhancedField.y, enhancedField.height);
+            
+            refined.append(enhancedField);
         } else {
             // Fallback: try to find horizontal lines (underlines) for text lines
             cv::Mat binary;
@@ -375,23 +470,66 @@ QList<cv::Rect> FormFieldDetector::refineOverfittedRegions(const QList<cv::Rect>
                     
                     if (lineRect.width > maxWidth && lineRect.width > 30) {
                         maxWidth = lineRect.width;
-                        // Create field above the line
+                        // Create field above the line with MORE vertical height
+                        int fieldHeight = 35;  // Increased from 20 to 35px
+                        int fieldTop = std::max(0, lineRect.y - fieldHeight);
+                        
+                        // Find hard edges: above, left, right to anchor to
+                        cv::Rect tempField(lineRect.x, fieldTop, lineRect.width, fieldHeight);
+                        int edgeY = findHardEdgeAbove(tempField, image, 60);
+                        int edgeXLeft = findHardEdgeLeft(tempField, image, 60);
+                        int edgeXRight = findHardEdgeRight(tempField, image, 60);
+                        
+                        if (edgeY >= 0) {
+                            fieldTop = edgeY;
+                            fieldHeight = lineRect.y - edgeY;
+                        }
+                        
+                        int fieldLeft = lineRect.x;
+                        int fieldWidth = lineRect.width;
+                        
+                        if (edgeXLeft >= 0) {
+                            fieldLeft = edgeXLeft;
+                            fieldWidth = (lineRect.x + lineRect.width) - edgeXLeft;
+                        }
+                        
+                        if (edgeXRight >= 0) {
+                            fieldWidth = edgeXRight - fieldLeft;
+                        }
+                        
                         bestLine = cv::Rect(
-                            lineRect.x,
-                            std::max(0, lineRect.y - 20),  // 20px above line
-                            lineRect.width,
-                            20  // 20px height
+                            fieldLeft,
+                            fieldTop,
+                            fieldWidth,
+                            fieldHeight
                         );
                     }
                 }
                 
                 if (bestLine.width > 0) {
+                    // Extend downward for more vertical room
+                    int downwardExtension = static_cast<int>(bestLine.height * 0.6);
+                    bestLine.height += downwardExtension;
+                    bestLine.height = std::min(image.rows - bestLine.y, bestLine.height);
+                    
                     refined.append(bestLine);
                 } else {
-                    refined.append(overfitted);  // Fallback to overfitted
+                    // Fallback: use overfitted but increase vertical height
+                    cv::Rect enhanced = overfitted;
+                    int heightIncrease = static_cast<int>(overfitted.height * 0.5);
+                    enhanced.y = std::max(0, enhanced.y - heightIncrease / 2);
+                    enhanced.height += heightIncrease;
+                    enhanced.height = std::min(image.rows - enhanced.y, enhanced.height);
+                    refined.append(enhanced);
                 }
             } else {
-                refined.append(overfitted);  // Fallback to overfitted
+                // Fallback: use overfitted but increase vertical height
+                cv::Rect enhanced = overfitted;
+                int heightIncrease = static_cast<int>(overfitted.height * 0.5);
+                enhanced.y = std::max(0, enhanced.y - heightIncrease / 2);
+                enhanced.height += heightIncrease;
+                enhanced.height = std::min(image.rows - enhanced.y, enhanced.height);
+                refined.append(enhanced);
             }
         }
     }
@@ -722,6 +860,696 @@ bool FormFieldDetector::isTextBlock(const cv::Rect& region, const cv::Mat& image
     }
     
     return false;  // Single text line
+}
+
+int FormFieldDetector::findHardEdgeAbove(const cv::Rect& region, const cv::Mat& image, int searchHeight)
+{
+    if (image.empty() || region.width <= 0 || region.height <= 0) {
+        return -1;
+    }
+    
+    // Search area above the region
+    int searchTop = std::max(0, region.y - searchHeight);
+    int searchBottom = region.y;
+    int searchLeft = region.x;
+    int searchRight = std::min(image.cols, region.x + region.width);
+    
+    if (searchTop >= searchBottom || searchRight <= searchLeft) {
+        return -1;
+    }
+    
+    cv::Rect searchArea(searchLeft, searchTop, searchRight - searchLeft, searchBottom - searchTop);
+    
+    // Convert to grayscale
+    cv::Mat gray;
+    if (image.channels() == 3) {
+        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+    } else {
+        gray = image.clone();
+    }
+    
+    // Extract ROI
+    cv::Mat roi = gray(searchArea);
+    
+    // Use Canny edge detection to find horizontal edges
+    cv::Mat edges;
+    cv::Canny(roi, edges, 50, 150);
+    
+    // Use horizontal morphology to find strong horizontal lines
+    cv::Mat horizontalKernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(30, 1));
+    cv::Mat horizontalLines;
+    cv::morphologyEx(edges, horizontalLines, cv::MORPH_DILATE, horizontalKernel);
+    
+    // Find contours (horizontal lines)
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(horizontalLines, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    
+    int bestEdgeY = -1;
+    int maxWidth = 0;
+    
+    for (const auto& contour : contours) {
+        if (contour.size() < 2) continue;
+        
+        cv::Rect lineRect = cv::boundingRect(contour);
+        
+        // Check if line spans most of the search width (strong edge)
+        if (lineRect.width > (searchArea.width * 0.6)) {
+            // Adjust to full image coordinates
+            int edgeY = searchArea.y + lineRect.y + lineRect.height / 2;
+            
+            // Prefer wider, stronger edges
+            if (lineRect.width > maxWidth) {
+                maxWidth = lineRect.width;
+                bestEdgeY = edgeY;
+            }
+        }
+    }
+    
+    // Also check using binary thresholding for underlines/separators
+    if (bestEdgeY < 0) {
+        cv::Mat binary;
+        cv::threshold(roi, binary, 127, 255, cv::THRESH_BINARY_INV);
+        
+        cv::Mat horizontalKernel2 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(40, 1));
+        cv::Mat horizontalLines2;
+        cv::morphologyEx(binary, horizontalLines2, cv::MORPH_OPEN, horizontalKernel2);
+        
+        std::vector<std::vector<cv::Point>> lineContours2;
+        cv::findContours(horizontalLines2, lineContours2, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+        
+        for (const auto& contour : lineContours2) {
+            if (contour.size() < 2) continue;
+            
+            cv::Rect lineRect = cv::boundingRect(contour);
+            
+            // Check if line spans most of the width
+            if (lineRect.width > (searchArea.width * 0.5)) {
+                int edgeY = searchArea.y + lineRect.y + lineRect.height / 2;
+                
+                // Prefer lines closer to the region (but not too close)
+                int distanceFromRegion = region.y - edgeY;
+                if (distanceFromRegion > 5 && distanceFromRegion < searchHeight) {
+                    if (lineRect.width > maxWidth) {
+                        maxWidth = lineRect.width;
+                        bestEdgeY = edgeY;
+                    }
+                }
+            }
+        }
+    }
+    
+    return bestEdgeY;  // Returns Y coordinate of hard edge, or -1 if not found
+}
+
+int FormFieldDetector::findHardEdgeLeft(const cv::Rect& region, const cv::Mat& image, int searchWidth)
+{
+    if (image.empty() || region.width <= 0 || region.height <= 0) {
+        return -1;
+    }
+    
+    // Search area to the LEFT of the region
+    int searchLeft = std::max(0, region.x - searchWidth);
+    int searchRight = region.x;
+    int searchTop = region.y;
+    int searchBottom = std::min(image.rows, region.y + region.height);
+    
+    if (searchLeft >= searchRight || searchBottom <= searchTop) {
+        return -1;
+    }
+    
+    cv::Rect searchArea(searchLeft, searchTop, searchRight - searchLeft, searchBottom - searchTop);
+    
+    // Convert to grayscale
+    cv::Mat gray;
+    if (image.channels() == 3) {
+        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+    } else {
+        gray = image.clone();
+    }
+    
+    // Extract ROI
+    cv::Mat roi = gray(searchArea);
+    
+    // Use MORE SENSITIVE Canny edge detection
+    cv::Mat edges;
+    cv::Canny(roi, edges, 30, 100);  // Lower thresholds for more sensitivity
+    
+    // Use vertical morphology to find strong vertical lines
+    cv::Mat verticalKernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(1, 25));
+    cv::Mat verticalLines;
+    cv::morphologyEx(edges, verticalLines, cv::MORPH_DILATE, verticalKernel, cv::Point(-1, -1), 2);
+    
+    // Also use binary thresholding
+    cv::Mat binary;
+    cv::threshold(roi, binary, 127, 255, cv::THRESH_BINARY_INV);
+    cv::Mat verticalLines2;
+    cv::morphologyEx(binary, verticalLines2, cv::MORPH_OPEN, verticalKernel);
+    
+    // Combine both detections
+    cv::Mat combined;
+    cv::bitwise_or(verticalLines, verticalLines2, combined);
+    
+    // Find contours (vertical lines)
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(combined, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    
+    int bestEdgeX = -1;
+    int maxHeight = 0;
+    
+    for (const auto& contour : contours) {
+        if (contour.size() < 2) continue;
+        
+        cv::Rect lineRect = cv::boundingRect(contour);
+        
+        // Check if line spans most of the search height (strong vertical edge)
+        if (lineRect.height > (searchArea.height * 0.6)) {
+            // Adjust to full image coordinates
+            int edgeX = searchArea.x + lineRect.x + lineRect.width / 2;
+            
+            // Prefer taller, stronger edges
+            if (lineRect.height > maxHeight) {
+                maxHeight = lineRect.height;
+                bestEdgeX = edgeX;
+            }
+        }
+    }
+    
+    // Also check using binary thresholding for vertical separators
+    if (bestEdgeX < 0) {
+        cv::Mat binary2;
+        cv::threshold(roi, binary2, 127, 255, cv::THRESH_BINARY_INV);
+        
+        cv::Mat verticalKernel2 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(1, 30));
+        cv::Mat verticalLines3;
+        cv::morphologyEx(binary2, verticalLines3, cv::MORPH_OPEN, verticalKernel2);
+        
+        std::vector<std::vector<cv::Point>> lineContours2;
+        cv::findContours(verticalLines3, lineContours2, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+        
+        for (const auto& contour : lineContours2) {
+            if (contour.size() < 2) continue;
+            
+            cv::Rect lineRect = cv::boundingRect(contour);
+            
+            // Check if line spans most of the height
+            if (lineRect.height > (searchArea.height * 0.5)) {
+                int edgeX = searchArea.x + lineRect.x + lineRect.width / 2;
+                
+                // Prefer lines closer to the region (but not too close)
+                int distanceFromRegion = region.x - edgeX;
+                if (distanceFromRegion > 5 && distanceFromRegion < searchWidth) {
+                    if (lineRect.height > maxHeight) {
+                        maxHeight = lineRect.height;
+                        bestEdgeX = edgeX;
+                    }
+                }
+            }
+        }
+    }
+    
+    return bestEdgeX;  // Returns X coordinate of hard edge, or -1 if not found
+}
+
+int FormFieldDetector::findHardEdgeRight(const cv::Rect& region, const cv::Mat& image, int searchWidth)
+{
+    if (image.empty() || region.width <= 0 || region.height <= 0) {
+        return -1;
+    }
+    
+    // Search area to the RIGHT of the region
+    int searchLeft = region.x + region.width;
+    int searchRight = std::min(image.cols, region.x + region.width + searchWidth);
+    int searchTop = region.y;
+    int searchBottom = std::min(image.rows, region.y + region.height);
+    
+    if (searchLeft >= searchRight || searchBottom <= searchTop) {
+        return -1;
+    }
+    
+    cv::Rect searchArea(searchLeft, searchTop, searchRight - searchLeft, searchBottom - searchTop);
+    
+    // Convert to grayscale
+    cv::Mat gray;
+    if (image.channels() == 3) {
+        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+    } else {
+        gray = image.clone();
+    }
+    
+    // Extract ROI
+    cv::Mat roi = gray(searchArea);
+    
+    // Use MORE SENSITIVE Canny edge detection
+    cv::Mat edges;
+    cv::Canny(roi, edges, 30, 100);  // Lower thresholds for more sensitivity
+    
+    // Use vertical morphology to find strong vertical lines
+    cv::Mat verticalKernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(1, 25));
+    cv::Mat verticalLines;
+    cv::morphologyEx(edges, verticalLines, cv::MORPH_DILATE, verticalKernel, cv::Point(-1, -1), 2);
+    
+    // Also use binary thresholding
+    cv::Mat binary;
+    cv::threshold(roi, binary, 127, 255, cv::THRESH_BINARY_INV);
+    cv::Mat verticalLines2;
+    cv::morphologyEx(binary, verticalLines2, cv::MORPH_OPEN, verticalKernel);
+    
+    // Combine both detections
+    cv::Mat combined;
+    cv::bitwise_or(verticalLines, verticalLines2, combined);
+    
+    // Find contours (vertical lines)
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(combined, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    
+    int bestEdgeX = -1;
+    int maxHeight = 0;
+    
+    for (const auto& contour : contours) {
+        if (contour.size() < 2) continue;
+        
+        cv::Rect lineRect = cv::boundingRect(contour);
+        
+        // Check if line spans most of the search height (strong vertical edge)
+        if (lineRect.height > (searchArea.height * 0.6)) {
+            // Adjust to full image coordinates
+            int edgeX = searchArea.x + lineRect.x + lineRect.width / 2;
+            
+            // Prefer taller, stronger edges
+            if (lineRect.height > maxHeight) {
+                maxHeight = lineRect.height;
+                bestEdgeX = edgeX;
+            }
+        }
+    }
+    
+    // Also check using binary thresholding for vertical separators
+    if (bestEdgeX < 0) {
+        cv::Mat binary2;
+        cv::threshold(roi, binary2, 127, 255, cv::THRESH_BINARY_INV);
+        
+        cv::Mat verticalKernel2 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(1, 30));
+        cv::Mat verticalLines3;
+        cv::morphologyEx(binary2, verticalLines3, cv::MORPH_OPEN, verticalKernel2);
+        
+        std::vector<std::vector<cv::Point>> lineContours2;
+        cv::findContours(verticalLines3, lineContours2, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+        
+        for (const auto& contour : lineContours2) {
+            if (contour.size() < 2) continue;
+            
+            cv::Rect lineRect = cv::boundingRect(contour);
+            
+            // Check if line spans most of the height
+            if (lineRect.height > (searchArea.height * 0.5)) {
+                int edgeX = searchArea.x + lineRect.x + lineRect.width / 2;
+                
+                // Prefer lines closer to the region (but not too close)
+                int distanceFromRegion = edgeX - (region.x + region.width);
+                if (distanceFromRegion > 5 && distanceFromRegion < searchWidth) {
+                    if (lineRect.height > maxHeight) {
+                        maxHeight = lineRect.height;
+                        bestEdgeX = edgeX;
+                    }
+                }
+            }
+        }
+    }
+    
+    return bestEdgeX;  // Returns X coordinate of hard edge, or -1 if not found
+}
+
+QList<int> FormFieldDetector::findVerticalWalls(const cv::Rect& region, const cv::Mat& image)
+{
+    QList<int> wallXCoords;
+    
+    if (image.empty() || region.width <= 0 || region.height <= 0) {
+        return wallXCoords;
+    }
+    
+    // Expand search area MORE to catch walls at edges and between cells
+    cv::Rect searchArea(
+        std::max(0, region.x - 15),  // More expansion
+        std::max(0, region.y - 5),
+        std::min(image.cols - std::max(0, region.x - 15), region.width + 30),  // More expansion
+        std::min(image.rows - std::max(0, region.y - 5), region.height + 10)
+    );
+    
+    if (searchArea.width <= 0 || searchArea.height <= 0) {
+        return wallXCoords;
+    }
+    
+    // Convert to grayscale
+    cv::Mat gray;
+    if (image.channels() == 3) {
+        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+    } else {
+        gray = image.clone();
+    }
+    
+    // Extract ROI
+    cv::Mat roi = gray(searchArea);
+    
+    // EXTREMELY SENSITIVE edge detection for thin vertical lines (cell walls)
+    cv::Mat edges;
+    cv::Canny(roi, edges, 20, 80);  // Even lower thresholds for maximum sensitivity
+    
+    // Use vertical morphology with longer kernel to catch full-height walls
+    cv::Mat verticalKernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(1, 20));  // Taller kernel
+    cv::Mat verticalLines;
+    cv::morphologyEx(edges, verticalLines, cv::MORPH_DILATE, verticalKernel, cv::Point(-1, -1), 3);  // More iterations
+    
+    // Also use binary thresholding with adaptive threshold for better detection
+    cv::Mat binary;
+    cv::adaptiveThreshold(roi, binary, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, 
+                          cv::THRESH_BINARY_INV, 11, 2);
+    cv::Mat verticalLines2;
+    cv::morphologyEx(binary, verticalLines2, cv::MORPH_OPEN, verticalKernel, cv::Point(-1, -1), 2);
+    
+    // Also try regular thresholding
+    cv::Mat binary2;
+    cv::threshold(roi, binary2, 140, 255, cv::THRESH_BINARY_INV);  // Slightly higher threshold
+    cv::Mat verticalLines3;
+    cv::morphologyEx(binary2, verticalLines3, cv::MORPH_OPEN, verticalKernel);
+    
+    // Combine all three detections
+    cv::Mat combined;
+    cv::bitwise_or(verticalLines, verticalLines2, combined);
+    cv::bitwise_or(combined, verticalLines3, combined);
+    
+    // Find contours (vertical lines/walls)
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(combined, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    
+    for (const auto& contour : contours) {
+        if (contour.size() < 2) continue;
+        
+        cv::Rect lineRect = cv::boundingRect(contour);
+        
+        // MORE LENIENT: Check if it's a vertical line (height > width * 1.5, and height > 40% of region height)
+        // This catches thinner walls between cells
+        if (lineRect.height > lineRect.width * 1.5 && 
+            lineRect.height > region.height * 0.4) {
+            
+            // Get X coordinate (center of line)
+            int wallX = searchArea.x + lineRect.x + lineRect.width / 2;
+            
+            // Check if wall is within or near the region (wider tolerance)
+            if (wallX >= region.x - 15 && wallX <= region.x + region.width + 15) {
+                wallXCoords.append(wallX);
+            }
+        }
+    }
+    
+    // Also check for very thin walls (1-2px wide) that might be missed
+    // Use HoughLinesP for line detection
+    cv::Mat houghEdges;
+    cv::Canny(roi, houghEdges, 20, 80);
+    std::vector<cv::Vec4i> lines;
+    cv::HoughLinesP(houghEdges, lines, 1, CV_PI/180, 30, 20, 10);  // Detect short lines too
+    
+    for (const cv::Vec4i& line : lines) {
+        int x1 = line[0];
+        int y1 = line[1];
+        int x2 = line[2];
+        int y2 = line[3];
+        
+        // Check if it's a vertical line (similar X coordinates, different Y)
+        if (std::abs(x1 - x2) < 3 && std::abs(y1 - y2) > region.height * 0.4) {
+            int wallX = searchArea.x + (x1 + x2) / 2;
+            
+            if (wallX >= region.x - 15 && wallX <= region.x + region.width + 15) {
+                wallXCoords.append(wallX);
+            }
+        }
+    }
+    
+    // Sort wall X coordinates
+    std::sort(wallXCoords.begin(), wallXCoords.end());
+    
+    // Remove duplicates (walls within 3px of each other - tighter for accuracy)
+    QList<int> uniqueWalls;
+    for (int x : wallXCoords) {
+        if (uniqueWalls.isEmpty() || std::abs(x - uniqueWalls.last()) > 3) {
+            uniqueWalls.append(x);
+        }
+    }
+    
+    return uniqueWalls;
+}
+
+QList<int> FormFieldDetector::findHorizontalEdges(const cv::Rect& region, const cv::Mat& image)
+{
+    QList<int> edgeYCoords;
+    
+    if (image.empty() || region.width <= 0 || region.height <= 0) {
+        return edgeYCoords;
+    }
+    
+    // Expand search area slightly
+    cv::Rect searchArea(
+        std::max(0, region.x),
+        std::max(0, region.y - 5),
+        std::min(image.cols - std::max(0, region.x), region.width),
+        std::min(image.rows - std::max(0, region.y - 5), region.height + 10)
+    );
+    
+    if (searchArea.width <= 0 || searchArea.height <= 0) {
+        return edgeYCoords;
+    }
+    
+    // Convert to grayscale
+    cv::Mat gray;
+    if (image.channels() == 3) {
+        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+    } else {
+        gray = image.clone();
+    }
+    
+    // Extract ROI
+    cv::Mat roi = gray(searchArea);
+    
+    // MORE SENSITIVE edge detection
+    cv::Mat edges;
+    cv::Canny(roi, edges, 30, 100);  // Lower thresholds for more sensitivity
+    
+    // Use horizontal morphology to find horizontal lines
+    cv::Mat horizontalKernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(25, 1));  // Wider kernel
+    cv::Mat horizontalLines;
+    cv::morphologyEx(edges, horizontalLines, cv::MORPH_DILATE, horizontalKernel, cv::Point(-1, -1), 2);
+    
+    // Also use binary thresholding
+    cv::Mat binary;
+    cv::threshold(roi, binary, 127, 255, cv::THRESH_BINARY_INV);
+    cv::Mat horizontalLines2;
+    cv::morphologyEx(binary, horizontalLines2, cv::MORPH_OPEN, horizontalKernel);
+    
+    // Combine both detections
+    cv::Mat combined;
+    cv::bitwise_or(horizontalLines, horizontalLines2, combined);
+    
+    // Find contours (horizontal lines)
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(combined, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    
+    for (const auto& contour : contours) {
+        if (contour.size() < 2) continue;
+        
+        cv::Rect lineRect = cv::boundingRect(contour);
+        
+        // Check if it's a horizontal line (width > height, and width > 50% of region width)
+        if (lineRect.width > lineRect.height * 2 && 
+            lineRect.width > region.width * 0.5) {
+            
+            // Get Y coordinate (center of line)
+            int edgeY = searchArea.y + lineRect.y + lineRect.height / 2;
+            
+            // Check if edge is within or near the region
+            if (edgeY >= region.y - 10 && edgeY <= region.y + region.height + 10) {
+                edgeYCoords.append(edgeY);
+            }
+        }
+    }
+    
+    // Sort edge Y coordinates
+    std::sort(edgeYCoords.begin(), edgeYCoords.end());
+    
+    // Remove duplicates (edges within 5px of each other)
+    QList<int> uniqueEdges;
+    for (int y : edgeYCoords) {
+        if (uniqueEdges.isEmpty() || std::abs(y - uniqueEdges.last()) > 5) {
+            uniqueEdges.append(y);
+        }
+    }
+    
+    return uniqueEdges;
+}
+
+QList<QList<cv::Rect>> FormFieldDetector::detectCellGroupsWithSharedWalls(const QList<cv::Rect>& regions, 
+                                                                          const cv::Mat& image)
+{
+    QList<QList<cv::Rect>> cellGroups;
+    
+    if (image.empty() || regions.isEmpty()) {
+        return cellGroups;
+    }
+    
+    // Convert to grayscale
+    cv::Mat gray;
+    if (image.channels() == 3) {
+        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+    } else {
+        gray = image.clone();
+    }
+    
+    // EXTREMELY SENSITIVE detection of all vertical walls in the image
+    cv::Mat edges;
+    cv::Canny(gray, edges, 20, 80);  // Very sensitive for thin walls
+    
+    // Use vertical morphology with longer kernel
+    cv::Mat verticalKernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(1, 25));
+    cv::Mat verticalLines;
+    cv::morphologyEx(edges, verticalLines, cv::MORPH_DILATE, verticalKernel, cv::Point(-1, -1), 3);
+    
+    // Also use adaptive thresholding
+    cv::Mat binary;
+    cv::adaptiveThreshold(gray, binary, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, 
+                          cv::THRESH_BINARY_INV, 11, 2);
+    cv::Mat verticalLines2;
+    cv::morphologyEx(binary, verticalLines2, cv::MORPH_OPEN, verticalKernel, cv::Point(-1, -1), 2);
+    
+    // Regular thresholding too
+    cv::Mat binary2;
+    cv::threshold(gray, binary2, 140, 255, cv::THRESH_BINARY_INV);
+    cv::Mat verticalLines3;
+    cv::morphologyEx(binary2, verticalLines3, cv::MORPH_OPEN, verticalKernel);
+    
+    // Combine all three
+    cv::Mat combined;
+    cv::bitwise_or(verticalLines, verticalLines2, combined);
+    cv::bitwise_or(combined, verticalLines3, combined);
+    
+    // Find all vertical wall X coordinates
+    std::vector<std::vector<cv::Point>> wallContours;
+    cv::findContours(combined, wallContours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    
+    QList<int> allWallXCoords;
+    for (const auto& contour : wallContours) {
+        if (contour.size() < 2) continue;
+        
+        cv::Rect wallRect = cv::boundingRect(contour);
+        
+        // MORE LENIENT: Check if it's a vertical wall (height > width * 1.5, and height > 25px)
+        // This catches thinner walls between cells
+        if (wallRect.height > wallRect.width * 1.5 && wallRect.height > 25) {
+            int wallX = wallRect.x + wallRect.width / 2;
+            allWallXCoords.append(wallX);
+        }
+    }
+    
+    // Also use HoughLinesP for very thin walls
+    std::vector<cv::Vec4i> houghLines;
+    cv::HoughLinesP(edges, houghLines, 1, CV_PI/180, 25, 15, 8);  // Detect shorter lines too
+    
+    for (const cv::Vec4i& line : houghLines) {
+        int x1 = line[0];
+        int y1 = line[1];
+        int x2 = line[2];
+        int y2 = line[3];
+        
+        // Check if it's a vertical line
+        if (std::abs(x1 - x2) < 3 && std::abs(y1 - y2) > 25) {
+            int wallX = (x1 + x2) / 2;
+            allWallXCoords.append(wallX);
+        }
+    }
+    
+    // Sort and deduplicate walls (tighter tolerance for accuracy)
+    std::sort(allWallXCoords.begin(), allWallXCoords.end());
+    QList<int> uniqueWalls;
+    for (int x : allWallXCoords) {
+        if (uniqueWalls.isEmpty() || std::abs(x - uniqueWalls.last()) > 2) {  // 2px tolerance
+            uniqueWalls.append(x);
+        }
+    }
+    
+    // Group regions that share walls (are separated by vertical lines)
+    QList<bool> processed(regions.size(), false);
+    
+    for (int i = 0; i < regions.size(); i++) {
+        if (processed[i]) continue;
+        
+        QList<cv::Rect> group;
+        group.append(regions[i]);
+        processed[i] = true;
+        
+        // Find regions that share walls with this one
+        cv::Rect currentRegion = regions[i];
+        
+        // Find walls within this region
+        QList<int> regionWalls = findVerticalWalls(currentRegion, image);
+        
+        // Look for other regions that align with these walls
+        for (int j = i + 1; j < regions.size(); j++) {
+            if (processed[j]) continue;
+            
+            cv::Rect otherRegion = regions[j];
+            
+            // Check if regions are horizontally aligned (similar Y and height)
+            int yDiff = std::abs(currentRegion.y - otherRegion.y);
+            int heightDiff = std::abs(currentRegion.height - otherRegion.height);
+            
+            if (yDiff < 10 && heightDiff < 10) {
+                // Check if they share a wall (one region's edge aligns with a wall)
+                bool sharesWall = false;
+                
+                // Check if left edge of other region aligns with right edge of current (or vice versa)
+                int leftRightGap = otherRegion.x - (currentRegion.x + currentRegion.width);
+                int rightLeftGap = currentRegion.x - (otherRegion.x + otherRegion.width);
+                
+                // Check if gap is small and contains a wall
+                if (leftRightGap >= 0 && leftRightGap < 20) {
+                    // Check if there's a wall in the gap
+                    for (int wallX : uniqueWalls) {
+                        if (wallX >= currentRegion.x + currentRegion.width - 5 &&
+                            wallX <= otherRegion.x + 5) {
+                            sharesWall = true;
+                            break;
+                        }
+                    }
+                } else if (rightLeftGap >= 0 && rightLeftGap < 20) {
+                    for (int wallX : uniqueWalls) {
+                        if (wallX >= otherRegion.x + otherRegion.width - 5 &&
+                            wallX <= currentRegion.x + 5) {
+                            sharesWall = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // Also check if regions are directly adjacent (touching or very close)
+                if (!sharesWall) {
+                    int gap = std::min(leftRightGap, rightLeftGap);
+                    if (gap >= 0 && gap < 5) {
+                        sharesWall = true;  // Directly adjacent, likely share a wall
+                    }
+                }
+                
+                if (sharesWall) {
+                    group.append(otherRegion);
+                    processed[j] = true;
+                    currentRegion = otherRegion;  // Continue from this region
+                }
+            }
+        }
+        
+        // If we found a group of 2+ cells, add it
+        if (group.size() >= 2) {
+            cellGroups.append(group);
+        }
+    }
+    
+    return cellGroups;
 }
 
 } // namespace ocr_orc

@@ -12,6 +12,7 @@
 #include "PatternAnalyzer.h"
 #include "FormFieldDetector.h"
 #include "ConfidenceCalculator.h"
+#include "RectangleDetector.h"
 #include "../core/CoordinateSystem.h"
 #include <QtGui/QImage>
 #include <opencv2/imgproc.hpp>
@@ -1056,11 +1057,14 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
         }
     }
     
-    // Pass 3: DRASTICALLY overfit regions, then use smart detection to find actual boundaries
+    // Pass 3: EXTREMELY DRASTIC overfitting, especially vertical
     QList<cv::Rect> overfittedFields;
     for (const cv::Rect& field : validatedFields) {
-        // DRASTIC overfit (expand by 30% - much more aggressive)
-        cv::Rect overfitted = formFieldDetector.overfitRegion(field, cvImage, 30);
+        // EXTREME overfit with asymmetric expansion:
+        // - Horizontal: 40% (more room for wide fields)
+        // - Vertical: 60% (MUCH more vertical room for multi-line fields)
+        cv::Rect overfitted = formFieldDetector.overfitRegionAsymmetric(
+            field, cvImage, 40, 60);  // 40% horizontal, 60% vertical
         overfittedFields.append(overfitted);
     }
     
@@ -1068,22 +1072,82 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
     QList<cv::Rect> refinedOverfitted = formFieldDetector.refineOverfittedRegions(
         overfittedFields, cvImage);
     
-    // Pass 4: Classify regions and filter out titles/headings
+    // Pass 4: Detect cell groups with shared walls (grid patterns)
+    QList<QList<cv::Rect>> cellGroups = formFieldDetector.detectCellGroupsWithSharedWalls(
+        refinedOverfitted, cvImage);
+    
+    // Flatten cell groups back to individual regions (for now - can enhance later to keep groups)
+    QList<cv::Rect> flattenedRegions = refinedOverfitted;
+    for (const QList<cv::Rect>& group : cellGroups) {
+        // Add any new cells found in groups
+        for (const cv::Rect& cell : group) {
+            // Check if not already in flattenedRegions
+            bool found = false;
+            for (const cv::Rect& existing : flattenedRegions) {
+                int overlapX = std::max(0, std::min(cell.x + cell.width, existing.x + existing.width) - 
+                                          std::max(cell.x, existing.x));
+                int overlapY = std::max(0, std::min(cell.y + cell.height, existing.y + existing.height) - 
+                                          std::max(cell.y, existing.y));
+                if (overlapX > cell.width * 0.5 && overlapY > cell.height * 0.5) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                flattenedRegions.append(cell);
+            }
+        }
+    }
+    
+    // Pass 5: Classify regions and filter out titles/headings
     QList<cv::Rect> classifiedFields = formFieldDetector.classifyAndRefineRegions(
-        refinedOverfitted, cvImage, ocrRegions);
+        flattenedRegions, cvImage, ocrRegions);
     
-    // Pass 5: Create final DetectedRegion objects with proper classification
-    QList<DetectedRegion> refinedRegions;
+    // Pass 6: SECONDARY PIPELINE - Concurrent rectangle/square detection
+    // Run rectangle detection (can be made truly concurrent later with QThread if needed)
+    RectangleDetector rectangleDetector;
+    rectangleDetector.setSensitivity(0.15);  // MUCH higher sensitivity (lower = more sensitive)
+    rectangleDetector.setMinSize(15, 10);    // Smaller minimums
+    rectangleDetector.setMaxSize(800, 300);  // Larger maximums
     
-    for (int i = 0; i < classifiedFields.size(); i++) {
-        const cv::Rect& fieldRect = classifiedFields[i];
+    // Run rectangle detection (for now, synchronously - can make concurrent with QThread later)
+    QList<DetectedRectangle> rectangleResults = rectangleDetector.detectRectangles(cvImage);
+    
+    // Pass 7: MATCH and MERGE regions from both pipelines (consensus-based detection)
+    // Match OCR-first results with rectangle detection results
+    // Pass ocrRegions for text filtering
+    DetectionResult mergedResult = matchAndMergePipelines(classifiedFields, rectangleResults, image, ocrRegions);
+    
+    // Pass 8: Use merged consensus regions directly (already processed in matchAndMergePipelines)
+    QList<DetectedRegion> refinedRegions = mergedResult.regions;
+    
+    // Pass 8.5: CRITICAL FINAL FILTER - Remove ANY regions that contain text
+    // This is the absolute gate: if text is detected inside, it's NOT an empty form field
+    // Empty form fields should be bright, have low edge density, and NO OCR text overlap
+    QList<DetectedRegion> textFilteredRegions;
+    for (const DetectedRegion& region : refinedRegions) {
+        cv::Rect fieldRect = region.boundingBox;
         
-        // Convert to normalized coordinates
-        ImageCoords imgCoords(fieldRect.x, fieldRect.y, 
-                             fieldRect.x + fieldRect.width, 
-                             fieldRect.y + fieldRect.height);
-        NormalizedCoords normCoords = CoordinateSystem::imageToNormalized(
-            imgCoords, image.width(), image.height());
+        // STRICT check: region must NOT contain any text
+        // This checks: OCR overlap, brightness, edge density, horizontal text lines
+        if (!refiner.regionContainsText(fieldRect, cvImage, ocrRegions)) {
+            textFilteredRegions.append(region);
+        } else {
+            // Region contains text - REJECT IT (not an empty form field)
+            // This is the critical filter to ensure we only detect empty input cells/lines
+            #if OCR_ORC_DEBUG_ENABLED
+            qDebug() << "REJECTED region with text (not empty form field):" 
+                     << fieldRect.x << fieldRect.y << fieldRect.width << fieldRect.height;
+            #endif
+        }
+    }
+    refinedRegions = textFilteredRegions;
+    
+    // If we filtered out everything, that's okay - better to have no results than wrong results
+    
+    // Pass 9: Enhance regions with additional classification and checkbox detection
+    for (DetectedRegion& region : refinedRegions) {
+        cv::Rect fieldRect = region.boundingBox;
         
         // Check if this field has a nearby checkbox
         CheckboxDetection nearbyCheckbox;
@@ -1106,20 +1170,16 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
             fieldType = FormFieldType::CheckboxField;
         }
         
-        // Calculate confidence based on field characteristics
-        double confidence = 0.7;  // Base confidence for empty fields
-        if (fieldType == FormFieldType::CheckboxField) {
-            confidence = 0.9;  // Checkboxes are high confidence
-        } else if (fieldType == FormFieldType::TextInput) {
-            confidence = 0.8;  // Text inputs with clear boundaries
+        // Update confidence based on consensus and field characteristics
+        if (region.method == "consensus") {
+            region.confidence = std::min(0.95, region.confidence + 0.1);  // Boost consensus confidence
         }
         
-        // Create DetectedRegion
-        DetectedRegion region;
-        region.coords = normCoords;
-        region.confidence = confidence;
-        region.method = "ocr-first";
-        region.boundingBox = fieldRect;
+        if (fieldType == FormFieldType::CheckboxField) {
+            region.confidence = 0.9;  // Checkboxes are high confidence
+        } else if (fieldType == FormFieldType::TextInput) {
+            region.confidence = std::max(region.confidence, 0.8);  // Text inputs with clear boundaries
+        }
         
         // Assign type and group based on classification
         if (fieldType == FormFieldType::CheckboxField) {
@@ -1142,13 +1202,11 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
             region.inferredType = "text_input";
             region.suggestedGroup = "TextInputGroup";
             region.suggestedColor = "red";
-        } else {
+        } else if (region.inferredType.isEmpty()) {
             region.inferredType = "form_field";
             region.suggestedGroup = "FormFieldGroup";
             region.suggestedColor = "gray";
         }
-        
-        refinedRegions.append(region);
     }
     
     // Stage 4: Group Inference
@@ -1192,6 +1250,190 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
     // Count confidence levels and populate maps
     for (int i = 0; i < refinedRegions.size(); i++) {
         const DetectedRegion& region = refinedRegions[i];
+        
+        if (region.confidence >= 0.8) {
+            result.highConfidence++;
+        } else if (region.confidence >= 0.5) {
+            result.mediumConfidence++;
+        } else {
+            result.lowConfidence++;
+        }
+        
+        // Populate region types and colors maps
+        QString regionName = QString("Region_%1").arg(i + 1);
+        result.regionTypes[regionName] = region.inferredType;
+        if (!region.suggestedGroup.isEmpty()) {
+            result.suggestedColors[region.suggestedGroup] = region.suggestedColor;
+        }
+    }
+    
+    return result;
+}
+
+DetectionResult RegionDetector::matchAndMergePipelines(const QList<cv::Rect>& ocrRegions,
+                                                       const QList<DetectedRectangle>& rectangleRegions,
+                                                       const QImage& image,
+                                                       const QList<OCRTextRegion>& ocrTextRegions)
+{
+    DetectionResult result;
+    result.methodUsed = "ocr-first+rectangle-consensus";
+    
+    if (image.isNull()) {
+        return result;
+    }
+    
+    // Convert image to cv::Mat for text checking
+    cv::Mat cvImage = ImageConverter::qImageToMat(image);
+    
+    // Create TextRegionRefiner for text filtering
+    TextRegionRefiner refiner;
+    
+    QList<DetectedRegion> matchedRegions;
+    
+    // Match OCR-first regions with rectangle detection regions
+    // Strategy: Only keep regions detected by BOTH pipelines (consensus)
+    // OR regions with very high confidence from a single pipeline
+    
+    for (const cv::Rect& ocrRect : ocrRegions) {
+        bool foundMatch = false;
+        double bestMatchScore = 0.0;
+        cv::Rect bestMatchedRect = ocrRect;
+        
+        // Check if this OCR region matches any rectangle detection
+        for (const DetectedRectangle& rectDet : rectangleRegions) {
+            const cv::Rect& cvRect = rectDet.boundingBox;
+            
+            // Calculate overlap
+            int overlapX = std::max(0, std::min(ocrRect.x + ocrRect.width, cvRect.x + cvRect.width) - 
+                                      std::max(ocrRect.x, cvRect.x));
+            int overlapY = std::max(0, std::min(ocrRect.y + ocrRect.height, cvRect.y + cvRect.height) - 
+                                      std::max(ocrRect.y, cvRect.y));
+            int overlapArea = overlapX * overlapY;
+            
+            int ocrArea = ocrRect.width * ocrRect.height;
+            int cvArea = cvRect.width * cvRect.height;
+            
+            // Calculate overlap percentage (IoU - Intersection over Union)
+            int unionArea = ocrArea + cvArea - overlapArea;
+            double iou = unionArea > 0 ? static_cast<double>(overlapArea) / unionArea : 0.0;
+            
+            // Also calculate individual overlaps
+            double ocrOverlap = ocrArea > 0 ? static_cast<double>(overlapArea) / ocrArea : 0.0;
+            double cvOverlap = cvArea > 0 ? static_cast<double>(overlapArea) / cvArea : 0.0;
+            
+            // MUCH more lenient matching: IoU > 0.3 OR either overlap > 0.4
+            // This allows partial matches and catches more regions
+            if (iou > 0.3 || ocrOverlap > 0.4 || cvOverlap > 0.4) {
+                foundMatch = true;
+                
+                // Calculate match score (combine IoU and rectangle confidence)
+                double matchScore = iou * 0.6 + rectDet.confidence * 0.4;
+                
+                if (matchScore > bestMatchScore) {
+                    bestMatchScore = matchScore;
+                    // Use the intersection (more precise) or prefer rectangle if it has high confidence
+                    if (rectDet.confidence > 0.8) {
+                        bestMatchedRect = cvRect;  // Use rectangle detection if very confident
+                    } else {
+                        // Use intersection of both
+                        int x1 = std::max(ocrRect.x, cvRect.x);
+                        int y1 = std::max(ocrRect.y, cvRect.y);
+                        int x2 = std::min(ocrRect.x + ocrRect.width, cvRect.x + cvRect.width);
+                        int y2 = std::min(ocrRect.y + ocrRect.height, cvRect.y + cvRect.height);
+                        bestMatchedRect = cv::Rect(x1, y1, x2 - x1, y2 - y1);
+                    }
+                }
+            }
+        }
+        
+        // Create DetectedRegion from matched OR any OCR region (fallback to OCR-first)
+        // Always include OCR regions, but boost confidence if matched
+        if (foundMatch || true) {  // Always include OCR regions as fallback
+            // Convert to normalized coordinates
+            ImageCoords imgCoords(bestMatchedRect.x, bestMatchedRect.y, 
+                                 bestMatchedRect.x + bestMatchedRect.width, 
+                                 bestMatchedRect.y + bestMatchedRect.height);
+            NormalizedCoords normCoords = CoordinateSystem::imageToNormalized(
+                imgCoords, image.width(), image.height());
+            
+            // CRITICAL: Check if region contains text BEFORE adding it
+            if (refiner.regionContainsText(bestMatchedRect, cvImage, ocrTextRegions)) {
+                // Region contains text - skip it (not an empty form field)
+                continue;
+            }
+            
+            DetectedRegion region;
+            region.coords = normCoords;
+            region.boundingBox = bestMatchedRect;
+            region.method = foundMatch ? "consensus" : "ocr-first";
+            // Confidence: consensus gets boost, OCR-only gets base confidence
+            region.confidence = foundMatch ? 0.85 : 0.70;  // Higher confidence for consensus, but still good for OCR-only
+            region.inferredType = "form_field";
+            region.suggestedGroup = "FormFieldGroup";
+            region.suggestedColor = "green";
+            
+            matchedRegions.append(region);
+        }
+    }
+    
+    // Also check for rectangle detections that weren't matched (lower threshold)
+    // (might be form fields OCR missed - be more inclusive)
+    for (const DetectedRectangle& rectDet : rectangleRegions) {
+        if (rectDet.confidence < 0.5) continue;  // Lowered from 0.7 - include more rectangles
+        
+        bool alreadyMatched = false;
+        for (const DetectedRegion& existing : matchedRegions) {
+            cv::Rect existingRect = existing.boundingBox;
+            const cv::Rect& cvRect = rectDet.boundingBox;
+            
+            // Check overlap
+            int overlapX = std::max(0, std::min(existingRect.x + existingRect.width, cvRect.x + cvRect.width) - 
+                                      std::max(existingRect.x, cvRect.x));
+            int overlapY = std::max(0, std::min(existingRect.y + existingRect.height, cvRect.y + cvRect.height) - 
+                                      std::max(existingRect.y, cvRect.y));
+            int overlapArea = overlapX * overlapY;
+            int existingArea = existingRect.width * existingRect.height;
+            
+            if (overlapArea > existingArea * 0.5) {
+                alreadyMatched = true;
+                break;
+            }
+        }
+        
+        if (!alreadyMatched) {
+            // CRITICAL: Check if rectangle region contains text BEFORE adding it
+            if (refiner.regionContainsText(rectDet.boundingBox, cvImage, ocrTextRegions)) {
+                // Region contains text - skip it (not an empty form field)
+                continue;
+            }
+            
+            // High-confidence rectangle not matched - add it
+            ImageCoords imgCoords(rectDet.boundingBox.x, rectDet.boundingBox.y, 
+                                 rectDet.boundingBox.x + rectDet.boundingBox.width, 
+                                 rectDet.boundingBox.y + rectDet.boundingBox.height);
+            NormalizedCoords normCoords = CoordinateSystem::imageToNormalized(
+                imgCoords, image.width(), image.height());
+            
+            DetectedRegion region;
+            region.coords = normCoords;
+            region.boundingBox = rectDet.boundingBox;
+            region.method = "rectangle-detection";
+            region.confidence = rectDet.confidence;
+            region.inferredType = rectDet.isSquare ? "square" : "form_field";
+            region.suggestedGroup = "FormFieldGroup";
+            region.suggestedColor = "blue";
+            
+            matchedRegions.append(region);
+        }
+    }
+    
+    // Build result
+    result.regions = matchedRegions;
+    result.totalDetected = matchedRegions.size();
+    
+    // Count confidence levels and populate maps
+    for (int i = 0; i < matchedRegions.size(); i++) {
+        const DetectedRegion& region = matchedRegions[i];
         
         if (region.confidence >= 0.8) {
             result.highConfidence++;

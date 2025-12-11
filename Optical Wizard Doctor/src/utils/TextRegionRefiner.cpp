@@ -535,8 +535,9 @@ bool TextRegionRefiner::regionContainsText(const cv::Rect& region, const cv::Mat
         int regionArea = region.width * region.height;
         int ocrArea = ocrBox.width * ocrBox.height;
         
-        // If significant overlap (>20% of region or OCR area), region contains text
-        if (overlapArea > regionArea * 0.2 || overlapArea > ocrArea * 0.2) {
+        // STRICTER: If ANY overlap (>10% of region or OCR area), region contains text
+        // We want EMPTY form fields only - any text overlap is a disqualifier
+        if (overlapArea > regionArea * 0.1 || overlapArea > ocrArea * 0.1) {
             return true;
         }
     }
@@ -573,8 +574,9 @@ bool TextRegionRefiner::regionContainsText(const cv::Rect& region, const cv::Mat
     cv::Scalar meanBrightness = cv::mean(roi);
     double brightness = meanBrightness[0] / 255.0;
     
-    // If brightness is too low (<0.6), likely contains text (dark pixels)
-    if (brightness < 0.6) {
+    // STRICTER: If brightness is too low (<0.7), likely contains text (dark pixels)
+    // Empty form fields should be bright/white
+    if (brightness < 0.7) {
         return true;
     }
     
@@ -584,8 +586,34 @@ bool TextRegionRefiner::regionContainsText(const cv::Rect& region, const cv::Mat
     int edgePixels = cv::countNonZero(edges);
     double edgeDensity = static_cast<double>(edgePixels) / (roi.rows * roi.cols);
     
-    // High edge density (>0.1) suggests text content
-    if (edgeDensity > 0.1) {
+    // STRICTER: Lower edge density threshold (>0.08) suggests text content
+    // Empty form fields should have low edge density (just borders)
+    if (edgeDensity > 0.08) {
+        return true;
+    }
+    
+    // Additional check: Check for horizontal lines (text lines)
+    // Count horizontal edge runs - text has many horizontal edges
+    int horizontalRuns = 0;
+    for (int y = 1; y < edges.rows - 1; y++) {
+        int runLength = 0;
+        for (int x = 1; x < edges.cols - 1; x++) {
+            if (edges.at<uchar>(y, x) > 0) {
+                runLength++;
+            } else {
+                if (runLength > 5) {  // Horizontal line > 5px
+                    horizontalRuns++;
+                }
+                runLength = 0;
+            }
+        }
+        if (runLength > 5) {
+            horizontalRuns++;
+        }
+    }
+    
+    // If many horizontal runs, likely text (multiple text lines)
+    if (horizontalRuns > 3) {
         return true;
     }
     

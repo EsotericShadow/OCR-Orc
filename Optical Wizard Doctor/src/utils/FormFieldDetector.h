@@ -84,13 +84,76 @@ public:
     cv::Rect overfitRegion(const cv::Rect& region, const cv::Mat& image, int expandPercent = 30);
     
     /**
+     * @brief Extremely drastic overfitting with asymmetric expansion
+     * @param region Original region
+     * @param image Source image (for bounds)
+     * @param expandPercentX Horizontal expansion percentage
+     * @param expandPercentY Vertical expansion percentage (typically larger for multi-line fields)
+     * @return Overfitted region with asymmetric expansion
+     */
+    cv::Rect overfitRegionAsymmetric(const cv::Rect& region, const cv::Mat& image, 
+                                     int expandPercentX, int expandPercentY);
+    
+    /**
      * @brief Refine overfitted regions using smart boundary detection
      * Finds actual form field boundaries within overfitted regions using edge detection
+     * Looks for hard edges ABOVE regions to use as anchor points
      * @param overfittedRegions List of overfitted regions
      * @param image Source image
-     * @return Refined regions with accurate boundaries
+     * @return Refined regions with accurate boundaries and increased vertical height
      */
     QList<cv::Rect> refineOverfittedRegions(const QList<cv::Rect>& overfittedRegions, const cv::Mat& image);
+    
+    /**
+     * @brief Find hard edge (horizontal line) above a region to use as anchor
+     * @param region Region to find edge above
+     * @param image Source image
+     * @param searchHeight How far above to search (default: 50px)
+     * @return Y coordinate of edge, or -1 if not found
+     */
+    int findHardEdgeAbove(const cv::Rect& region, const cv::Mat& image, int searchHeight = 50);
+    
+    /**
+     * @brief Find hard edge (vertical line) to the left of a region to use as anchor
+     * @param region Region to find edge left of
+     * @param image Source image
+     * @param searchWidth How far left to search (default: 50px)
+     * @return X coordinate of edge, or -1 if not found
+     */
+    int findHardEdgeLeft(const cv::Rect& region, const cv::Mat& image, int searchWidth = 50);
+    
+    /**
+     * @brief Find hard edge (vertical line) to the right of a region to use as anchor
+     * @param region Region to find edge right of
+     * @param image Source image
+     * @param searchWidth How far right to search (default: 50px)
+     * @return X coordinate of edge, or -1 if not found
+     */
+    int findHardEdgeRight(const cv::Rect& region, const cv::Mat& image, int searchWidth = 50);
+    
+    /**
+     * @brief Detect groups of cells that share vertical walls (grid pattern)
+     * @param regions List of detected regions
+     * @param image Source image
+     * @return List of cell groups (each group contains cells sharing walls)
+     */
+    QList<QList<cv::Rect>> detectCellGroupsWithSharedWalls(const QList<cv::Rect>& regions, const cv::Mat& image);
+    
+    /**
+     * @brief Find vertical walls/lines between cells (more sensitive detection)
+     * @param region Region to analyze
+     * @param image Source image
+     * @return List of vertical line X coordinates (walls)
+     */
+    QList<int> findVerticalWalls(const cv::Rect& region, const cv::Mat& image);
+    
+    /**
+     * @brief Enhanced horizontal edge detection (more sensitive)
+     * @param region Region to analyze
+     * @param image Source image
+     * @return List of horizontal edge Y coordinates
+     */
+    QList<int> findHorizontalEdges(const cv::Rect& region, const cv::Mat& image);
     
     /**
      * @brief Classify a region type (TextLine, TextBlock, Cell, Title, etc.)
