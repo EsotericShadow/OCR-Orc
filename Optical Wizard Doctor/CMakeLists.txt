@@ -134,6 +134,42 @@ endif()
 message(STATUS "Qt6 found: ${Qt6_VERSION}")
 message(STATUS "Qt6_DIR: ${Qt6_DIR}")
 
+# Find OpenCV
+find_package(OpenCV REQUIRED)
+
+if(NOT OpenCV_FOUND)
+    message(FATAL_ERROR "
+================================================================================
+OpenCV not found!
+
+Please install OpenCV using one of these methods:
+
+1. Using Homebrew (macOS):
+   - brew install opencv
+   - Then run cmake again
+
+2. Using vcpkg:
+   - vcpkg install opencv4
+   - Then run cmake again
+
+3. Build from source:
+   - Download from https://opencv.org/releases/
+   - Build and install
+   - Set OpenCV_DIR: cmake -DOpenCV_DIR=/path/to/opencv/build ...
+
+Current OpenCV_DIR: ${OpenCV_DIR}
+================================================================================
+")
+endif()
+
+# Check OpenCV version (require 4.5+)
+if(OpenCV_VERSION VERSION_LESS "4.5.0")
+    message(WARNING "OpenCV version ${OpenCV_VERSION} found, but 4.5.0+ is recommended")
+endif()
+
+message(STATUS "OpenCV found: ${OpenCV_VERSION}")
+message(STATUS "OpenCV_DIR: ${OpenCV_DIR}")
+
 # Enable Qt's MOC, UIC, RCC
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
@@ -162,6 +198,9 @@ add_executable(ocr-orc
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(POPPLER_CPP REQUIRED poppler-cpp)
 
+# Find Tesseract OCR
+pkg_check_modules(TESSERACT REQUIRED tesseract)
+
 # Link Qt libraries
 target_link_libraries(ocr-orc
     Qt6::Core
@@ -169,15 +208,20 @@ target_link_libraries(ocr-orc
     Qt6::Svg
     Qt6::DBus
     ${POPPLER_CPP_LIBRARIES}
+    ${TESSERACT_LIBRARIES}
+    ${OpenCV_LIBS}
 )
 
 # Include Poppler directories
 target_include_directories(ocr-orc PRIVATE ${POPPLER_CPP_INCLUDE_DIRS})
+target_include_directories(ocr-orc PRIVATE ${TESSERACT_INCLUDE_DIRS})
+target_include_directories(ocr-orc PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_compile_options(ocr-orc PRIVATE ${POPPLER_CPP_CFLAGS_OTHER})
 
-# Add library search paths for Poppler (macOS Homebrew)
+# Add library search paths for Poppler and Tesseract (macOS Homebrew)
 if(APPLE)
     target_link_directories(ocr-orc PRIVATE ${POPPLER_CPP_LIBRARY_DIRS})
+    target_link_directories(ocr-orc PRIVATE ${TESSERACT_LIBRARY_DIRS})
 endif()
 
 # Set output directory

@@ -353,5 +353,130 @@ target_link_libraries(test_theme_manager
     Qt6::Widgets
 )
 add_test(NAME ThemeManagerTests COMMAND test_theme_manager)
+
+# OCR-First Detection Tests
+# Note: These tests require Tesseract to be installed
+# Find Tesseract for OCR tests
+pkg_check_modules(TESSERACT REQUIRED tesseract)
+
+# OcrTextExtractor test
+add_executable(test_ocr_text_extractor
+    test_ocr_text_extractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/OcrTextExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/ImageConverter.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CoordinateSystem.cpp
+)
+target_link_libraries(test_ocr_text_extractor
+    Qt6::Core
+    Qt6::Test
+    Qt6::Gui
+    ${TESSERACT_LIBRARIES}
+    ${OpenCV_LIBS}
+)
+target_include_directories(test_ocr_text_extractor PRIVATE ${TESSERACT_INCLUDE_DIRS})
+add_test(NAME OcrTextExtractorTest COMMAND test_ocr_text_extractor)
+
+# TextRegionRefiner test
+add_executable(test_text_region_refiner
+    test_text_region_refiner.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/TextRegionRefiner.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/OcrTextExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/ImageConverter.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CoordinateSystem.cpp
+)
+target_link_libraries(test_text_region_refiner
+    Qt6::Core
+    Qt6::Test
+    Qt6::Gui
+    ${OpenCV_LIBS}
+)
+add_test(NAME TextRegionRefinerTest COMMAND test_text_region_refiner)
+
+# CheckboxDetector test
+add_executable(test_checkbox_detector
+    test_checkbox_detector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/CheckboxDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/OcrTextExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/ImageConverter.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CoordinateSystem.cpp
+)
+target_link_libraries(test_checkbox_detector
+    Qt6::Core
+    Qt6::Test
+    Qt6::Gui
+    ${OpenCV_LIBS}
+)
+add_test(NAME CheckboxDetectorTest COMMAND test_checkbox_detector)
+
+# PatternAnalyzer test
+add_executable(test_pattern_analyzer
+    test_pattern_analyzer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/PatternAnalyzer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/CheckboxDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/OcrTextExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/ImageConverter.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CoordinateSystem.cpp
+)
+target_link_libraries(test_pattern_analyzer
+    Qt6::Core
+    Qt6::Test
+    Qt6::Gui
+    ${OpenCV_LIBS}
+)
+add_test(NAME PatternAnalyzerTest COMMAND test_pattern_analyzer)
+
+# ConfidenceCalculator test
+add_executable(test_confidence_calculator
+    test_confidence_calculator.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/ConfidenceCalculator.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/RegionDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/ImageConverter.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/TypeInferencer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/GroupInferencer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/SpatialClusterer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/RegionValidator.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/patterns/PostalCodePatternDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/patterns/NameFieldPatternDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/patterns/NumberSequencePatternDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CoordinateSystem.cpp
+)
+target_link_libraries(test_confidence_calculator
+    Qt6::Core
+    Qt6::Test
+    Qt6::Gui
+    ${OpenCV_LIBS}
+)
+add_test(NAME ConfidenceCalculatorTest COMMAND test_confidence_calculator)
+
+# OCR-First Integration Test
+add_executable(test_ocr_first_integration
+    test_ocr_first_integration.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/RegionDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/OcrTextExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/TextRegionRefiner.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/CheckboxDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/PatternAnalyzer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/FormFieldDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/ConfidenceCalculator.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/ImageConverter.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/TypeInferencer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/GroupInferencer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/SpatialClusterer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/RegionValidator.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/patterns/PostalCodePatternDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/patterns/NameFieldPatternDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/patterns/NumberSequencePatternDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CoordinateSystem.cpp
+)
+target_link_libraries(test_ocr_first_integration
+    Qt6::Core
+    Qt6::Test
+    Qt6::Gui
+    ${TESSERACT_LIBRARIES}
+    ${OpenCV_LIBS}
+)
+target_include_directories(test_ocr_first_integration PRIVATE ${TESSERACT_INCLUDE_DIRS})
+add_test(NAME OcrFirstIntegrationTest COMMAND test_ocr_first_integration)
+
 endif()
 

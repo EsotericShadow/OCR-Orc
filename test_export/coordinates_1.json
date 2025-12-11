@@ -1,0 +1,606 @@
+{
+    "aspect_ratio": 0.7727272727272727,
+    "groups": {
+        "Firstname": [
+            "First_name_cell_3",
+            "First_name_cell_12",
+            "First_name_cell_11",
+            "First_name_cell_7",
+            "First_name_cell_16",
+            "First_name_cell_14",
+            "First_name_cell_9",
+            "First_name_cell_8",
+            "First_name_cell_10",
+            "First_name_cell_2",
+            "First_name_cell_13",
+            "First_name_cell_4",
+            "First_name_cell_5",
+            "First_name_cell_1",
+            "First_name_matrix",
+            "First_name_cell_6",
+            "First_name_cell_15"
+        ],
+        "Lastname": [
+            "Last_name_cell_16",
+            "Last_name_cell_2",
+            "Last_name_cell_13",
+            "Last_name_cell_4",
+            "Last_name_cell_12",
+            "Last_name_cell_1",
+            "Last_name_cell_6",
+            "Last_name_cell_7",
+            "Last_name_cell_10",
+            "Last_name_cell_11",
+            "Last_name_cell_15",
+            "Last_name_cell_8",
+            "Last_name_cell_5",
+            "Last_name_cell_9",
+            "Last_name_cell_14",
+            "Last_name_cell_3",
+            "Last_name_matrix"
+        ],
+        "Postalcode": [
+            "Postal_code_cell_6(num)",
+            "Postal_code_cell_5(let)",
+            "Post_code_B",
+            "Post_code_A",
+            "Postal_code_cell_3(let)",
+            "Post_code_matrix",
+            "Postal_code_cell_2(num)",
+            "Postal_code_cell_1(let)",
+            "Postal_code_cell_4(num)"
+        ],
+        "Studentnumber": [
+            "Student_number_matrix",
+            "Student_number_cell_2",
+            "Student_number_cell_1",
+            "Student_number_cell_5",
+            "Student_number_cell_4",
+            "Student_number_cell_3"
+        ]
+    },
+    "image_size": [
+        1275,
+        1650
+    ],
+    "pdf_path": "/Users/main/Desktop/GOOD_STUDENT_REGISTRATION_FORM.pdf",
+    "regions": {
+        "First_name_cell_1": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.05647058823529411,
+                "x2": 0.09490196078431375,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_10": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.37882352941176484,
+                "x2": 0.4172549019607844,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_11": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.41568627450980405,
+                "x2": 0.45176470588235307,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_12": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.45098039215686286,
+                "x2": 0.4886274509803923,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_13": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.4870588235294119,
+                "x2": 0.5247058823529409,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_14": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.5231372549019606,
+                "x2": 0.5599999999999998,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_15": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.5584313725490194,
+                "x2": 0.5960784313725488,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_16": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.5945098039215684,
+                "x2": 0.6313725490196076,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_2": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.09254901960784316,
+                "x2": 0.13019607843137243,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_3": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.1278431372549019,
+                "x2": 0.1662745098039215,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_4": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.16470588235294112,
+                "x2": 0.20078431372549013,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_5": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.20078431372549013,
+                "x2": 0.23764705882352935,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_6": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.23607843137254897,
+                "x2": 0.27450980392156876,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_7": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.27215686274509815,
+                "x2": 0.30980392156862757,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_8": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.30745098039215696,
+                "x2": 0.3458823529411766,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_9": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.34352941176470597,
+                "x2": 0.3803921568627452,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_matrix": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.05254901960784318,
+                "x2": 0.6352941176470592,
+                "y1": 0.26251190792633544,
+                "y2": 0.3085725139869415
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_1": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.05647058823529412,
+                "x2": 0.09490196078431372,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_10": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.3788235294117647,
+                "x2": 0.4172549019607843,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_11": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.41568627450980394,
+                "x2": 0.45176470588235296,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_12": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.45098039215686275,
+                "x2": 0.4886274509803922,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_13": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.48705882352941177,
+                "x2": 0.5247058823529411,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_14": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.5231372549019608,
+                "x2": 0.56,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_15": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.5584313725490196,
+                "x2": 0.596078431372549,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_16": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.5945098039215686,
+                "x2": 0.6313725490196078,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_2": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.09254901960784313,
+                "x2": 0.13019607843137254,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_3": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.12784313725490196,
+                "x2": 0.16627450980392156,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_4": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.16470588235294117,
+                "x2": 0.2007843137254902,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_5": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.2007843137254902,
+                "x2": 0.2376470588235294,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_6": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.23607843137254902,
+                "x2": 0.27450980392156865,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_7": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.27215686274509804,
+                "x2": 0.30980392156862746,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_8": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.30745098039215685,
+                "x2": 0.3458823529411765,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_9": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.34352941176470586,
+                "x2": 0.3803921568627451,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_matrix": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.05254901960784313,
+                "x2": 0.6352941176470587,
+                "y1": 0.17320232370716207,
+                "y2": 0.21926292976776804
+            },
+            "region_type": "letters"
+        },
+        "Post_code_A": {
+            "color": "yellow",
+            "group": "Postalcode",
+            "normalized_coords": {
+                "x1": 0.5215686274509804,
+                "x2": 0.6345098039215686,
+                "y1": 0.32545454545454544,
+                "y2": 0.3696969696969697
+            }
+        },
+        "Post_code_B": {
+            "color": "yellow",
+            "group": "Postalcode",
+            "normalized_coords": {
+                "x1": 0.6684865416297697,
+                "x2": 0.7814277181003579,
+                "y1": 0.3254545454545453,
+                "y2": 0.3696969696969695
+            }
+        },
+        "Post_code_matrix": {
+            "color": "yellow",
+            "group": "Postalcode",
+            "normalized_coords": {
+                "x1": 0.516078431372549,
+                "x2": 0.7874509803921569,
+                "y1": 0.32303030303030306,
+                "y2": 0.3696969696969697
+            }
+        },
+        "Postal_code_cell_1(let)": {
+            "color": "purple",
+            "group": "Postalcode",
+            "normalized_coords": {
+                "x1": 0.5231372549019608,
+                "x2": 0.5607843137254902,
+                "y1": 0.32727272727272727,
+                "y2": 0.36727272727272725
+            },
+            "region_type": "letters"
+        },
+        "Postal_code_cell_2(num)": {
+            "color": "yellow",
+            "group": "Postalcode",
+            "normalized_coords": {
+                "x1": 0.5586461163349008,
+                "x2": 0.5962931751584302,
+                "y1": 0.3274442189330568,
+                "y2": 0.3674442189330568
+            },
+            "region_type": "numbers"
+        },
+        "Postal_code_cell_3(let)": {
+            "color": "purple",
+            "group": "Postalcode",
+            "normalized_coords": {
+                "x1": 0.5948207689197079,
+                "x2": 0.6324678277432373,
+                "y1": 0.32710123561239784,
+                "y2": 0.3671012356123978
+            },
+            "region_type": "letters"
+        },
+        "Postal_code_cell_4(num)": {
+            "color": "yellow",
+            "group": "Postalcode",
+            "normalized_coords": {
+                "x1": 0.6702770994647055,
+                "x2": 0.7079241582882349,
+                "y1": 0.3279586939140454,
+                "y2": 0.3679586939140454
+            },
+            "region_type": "numbers"
+        },
+        "Postal_code_cell_5(let)": {
+            "color": "purple",
+            "group": "Postalcode",
+            "normalized_coords": {
+                "x1": 0.7060078912816007,
+                "x2": 0.74365495010513,
+                "y1": 0.32761571059338657,
+                "y2": 0.36761571059338655
+            },
+            "region_type": "letters"
+        },
+        "Postal_code_cell_6(num)": {
+            "color": "yellow",
+            "group": "Postalcode",
+            "normalized_coords": {
+                "x1": 0.7412948223305855,
+                "x2": 0.7789418811541149,
+                "y1": 0.3277872022537158,
+                "y2": 0.3677872022537158
+            },
+            "region_type": "numbers"
+        },
+        "Student_number_cell_1": {
+            "color": "green",
+            "group": "Studentnumber",
+            "normalized_coords": {
+                "x1": 0.7294117647058823,
+                "x2": 0.7733333333333333,
+                "y1": 0.17636363636363636,
+                "y2": 0.2206060606060606
+            },
+            "region_type": "numbers"
+        },
+        "Student_number_cell_2": {
+            "color": "green",
+            "group": "Studentnumber",
+            "normalized_coords": {
+                "x1": 0.7717031910803541,
+                "x2": 0.8156247597078051,
+                "y1": 0.1762002376708259,
+                "y2": 0.22044266191325015
+            },
+            "region_type": "numbers"
+        },
+        "Student_number_cell_3": {
+            "color": "green",
+            "group": "Studentnumber",
+            "normalized_coords": {
+                "x1": 0.8144175317185702,
+                "x2": 0.8583391003460212,
+                "y1": 0.17652703505644682,
+                "y2": 0.22076945929887107
+            },
+            "region_type": "numbers"
+        },
+        "Student_number_cell_4": {
+            "color": "green",
+            "group": "Studentnumber",
+            "normalized_coords": {
+                "x1": 0.8567089580930412,
+                "x2": 0.9006305267204922,
+                "y1": 0.17652703505644682,
+                "y2": 0.22076945929887107
+            },
+            "region_type": "numbers"
+        },
+        "Student_number_cell_5": {
+            "color": "green",
+            "group": "Studentnumber",
+            "normalized_coords": {
+                "x1": 0.8992118415993852,
+                "x2": 0.9431334102268362,
+                "y1": 0.1762002376708259,
+                "y2": 0.22044266191325015
+            },
+            "region_type": "numbers"
+        },
+        "Student_number_matrix": {
+            "color": "green",
+            "group": "Studentnumber",
+            "normalized_coords": {
+                "x1": 0.7262745098039216,
+                "x2": 0.9458823529411765,
+                "y1": 0.17333333333333334,
+                "y2": 0.22303030303030302
+            },
+            "region_type": "numbers"
+        }
+    },
+    "version": "1.0"
+}

@@ -1,0 +1,425 @@
+{
+    "aspect_ratio": 0.7727272727272727,
+    "groups": {
+        "Firstname": [
+            "First_name_cell_3",
+            "First_name_cell_12",
+            "First_name_cell_11",
+            "First_name_cell_7",
+            "First_name_cell_16",
+            "First_name_cell_14",
+            "First_name_cell_9",
+            "First_name_cell_8",
+            "First_name_cell_10",
+            "First_name_cell_2",
+            "First_name_cell_13",
+            "First_name_cell_4",
+            "First_name_cell_5",
+            "First_name_cell_1",
+            "First_name_matrix",
+            "First_name_cell_6",
+            "First_name_cell_15"
+        ],
+        "Lastname": [
+            "Last_name_cell_16",
+            "Last_name_cell_2",
+            "Last_name_cell_13",
+            "Last_name_cell_4",
+            "Last_name_cell_12",
+            "Last_name_cell_1",
+            "Last_name_cell_6",
+            "Last_name_cell_7",
+            "Last_name_cell_10",
+            "Last_name_cell_11",
+            "Last_name_cell_15",
+            "Last_name_cell_8",
+            "Last_name_cell_5",
+            "Last_name_cell_9",
+            "Last_name_cell_14",
+            "Last_name_cell_3",
+            "Last_name_matrix"
+        ]
+    },
+    "image_size": [
+        1275,
+        1650
+    ],
+    "pdf_path": "/Users/main/Desktop/GOOD_STUDENT_REGISTRATION_FORM.pdf",
+    "regions": {
+        "First_name_cell_1": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.05647058823529411,
+                "x2": 0.09490196078431375,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_10": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.37882352941176484,
+                "x2": 0.4172549019607844,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_11": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.41568627450980405,
+                "x2": 0.45176470588235307,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_12": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.45098039215686286,
+                "x2": 0.4886274509803923,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_13": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.4870588235294119,
+                "x2": 0.5247058823529409,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_14": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.5231372549019606,
+                "x2": 0.5599999999999998,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_15": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.5584313725490194,
+                "x2": 0.5960784313725488,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_16": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.5945098039215684,
+                "x2": 0.6313725490196076,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_2": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.09254901960784316,
+                "x2": 0.13019607843137243,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_3": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.1278431372549019,
+                "x2": 0.1662745098039215,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_4": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.16470588235294112,
+                "x2": 0.20078431372549013,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_5": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.20078431372549013,
+                "x2": 0.23764705882352935,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_6": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.23607843137254897,
+                "x2": 0.27450980392156876,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_7": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.27215686274509815,
+                "x2": 0.30980392156862757,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_8": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.30745098039215696,
+                "x2": 0.3458823529411766,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_cell_9": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.34352941176470597,
+                "x2": 0.3803921568627452,
+                "y1": 0.26614827156269893,
+                "y2": 0.30554221095663825
+            },
+            "region_type": "letters"
+        },
+        "First_name_matrix": {
+            "color": "red",
+            "group": "Firstname",
+            "normalized_coords": {
+                "x1": 0.05254901960784318,
+                "x2": 0.6352941176470592,
+                "y1": 0.26251190792633544,
+                "y2": 0.3085725139869415
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_1": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.05647058823529412,
+                "x2": 0.09490196078431372,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_10": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.3788235294117647,
+                "x2": 0.4172549019607843,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_11": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.41568627450980394,
+                "x2": 0.45176470588235296,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_12": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.45098039215686275,
+                "x2": 0.4886274509803922,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_13": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.48705882352941177,
+                "x2": 0.5247058823529411,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_14": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.5231372549019608,
+                "x2": 0.56,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_15": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.5584313725490196,
+                "x2": 0.596078431372549,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_16": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.5945098039215686,
+                "x2": 0.6313725490196078,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_2": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.09254901960784313,
+                "x2": 0.13019607843137254,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_3": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.12784313725490196,
+                "x2": 0.16627450980392156,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_4": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.16470588235294117,
+                "x2": 0.2007843137254902,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_5": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.2007843137254902,
+                "x2": 0.2376470588235294,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_6": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.23607843137254902,
+                "x2": 0.27450980392156865,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_7": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.27215686274509804,
+                "x2": 0.30980392156862746,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_8": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.30745098039215685,
+                "x2": 0.3458823529411765,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_cell_9": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.34352941176470586,
+                "x2": 0.3803921568627451,
+                "y1": 0.17636363636363636,
+                "y2": 0.21575757575757576
+            },
+            "region_type": "letters"
+        },
+        "Last_name_matrix": {
+            "color": "blue",
+            "group": "Lastname",
+            "normalized_coords": {
+                "x1": 0.05254901960784313,
+                "x2": 0.6352941176470587,
+                "y1": 0.17320232370716207,
+                "y2": 0.21926292976776804
+            },
+            "region_type": "letters"
+        }
+    },
+    "version": "1.0"
+}

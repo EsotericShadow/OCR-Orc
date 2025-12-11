@@ -221,6 +221,29 @@ void ToolbarWidget::setupZoom(QHBoxLayout* layout) {
     );
     connect(rotateButton, &QPushButton::clicked, this, &ToolbarWidget::rotateClicked);
     layout->addWidget(rotateButton);
+    
+    // Magic Detect button
+    magicDetectButton = new QPushButton(this);
+    magicDetectButton->setFixedSize(32, 32);
+    magicDetectButton->setIcon(IconManager::instance().getIcon("create")); // Temporary icon
+    magicDetectButton->setIconSize(QSize(20, 20));
+    magicDetectButton->setToolTip("Magic Detect - Auto-detect regions (Shortcut: Cmd+M)");
+    magicDetectButton->setStyleSheet(
+        "QPushButton {"
+        "    border: 1px solid #2196F3;"
+        "    border-radius: 4px;"
+        "    background-color: #2196F3;"
+        "}"
+        "QPushButton:hover {"
+        "    background-color: #1976D2;"
+        "    border-color: #1976D2;"
+        "}"
+        "QPushButton:pressed {"
+        "    background-color: #1565C0;"
+        "}"
+    );
+    connect(magicDetectButton, &QPushButton::clicked, this, &ToolbarWidget::magicDetectClicked);
+    layout->addWidget(magicDetectButton);
 }
 
 void ToolbarWidget::updateRotateButton(bool enabled) {
@@ -368,6 +391,11 @@ void ToolbarWidget::refreshIcons() {
         rotateButton->setIcon(QIcon());
         QCoreApplication::processEvents();
         rotateButton->setIcon(IconManager::instance().getIcon("zoom_reset"));
+    }
+    if (magicDetectButton) {
+        magicDetectButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        magicDetectButton->setIcon(IconManager::instance().getIcon("create"));
     }
     if (groupButton) {
         groupButton->setIcon(QIcon());

@@ -41,6 +41,7 @@ void MainWindowWidgetConnections::connectWidgets(MainWindow* mainWindow,
     QObject::connect(toolbarWidget, &ToolbarWidget::zoomOutClicked, mainWindow, &MainWindow::onZoomOut);
     QObject::connect(toolbarWidget, &ToolbarWidget::zoomResetClicked, mainWindow, &MainWindow::onZoomReset);
     QObject::connect(canvas, &Canvas::zoomChanged, toolbarWidget, &ToolbarWidget::updateZoomLabel);
+    QObject::connect(toolbarWidget, &ToolbarWidget::magicDetectClicked, mainWindow, &MainWindow::onMagicDetect);
     QObject::connect(toolbarWidget, &ToolbarWidget::rotateClicked, canvas, [canvas, toolbarWidget](bool checked) {
         canvas->setRotateMode(checked);
         // Sync button state with canvas state

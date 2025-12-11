@@ -5,7 +5,10 @@
 #include "components/widgets/ControlPanelWidget.h"
 #include "components/widgets/SidePanelWidget.h"
 #include "components/dialogs/PreferencesDialog.h"
+#include "components/dialogs/DetectionPreviewDialog.h"
+#include "utils/DetectionWorker.h"
 #include "../models/DocumentState.h"
+#include "../utils/RegionDetector.h"
 #include "../utils/PdfLoader.h"
 #include "../export/JsonExporter.h"
 #include "../export/CsvExporter.h"
@@ -79,6 +82,10 @@ MainWindow::MainWindow(QWidget *parent)
     , regionGroupHandlers(new MainWindowRegionGroupHandlers())
     , regionEditorHandlers(new MainWindowRegionEditorHandlers())
     , viewHandlers(new MainWindowViewHandlers())
+            , detectionThread(nullptr)
+            , detectionWorker(nullptr)
+            , isDetecting(false)
+            , currentDetectionResult(nullptr)
 {
     setWindowProperties();
     setupUI();
@@ -86,9 +93,20 @@ MainWindow::MainWindow(QWidget *parent)
     
     // Initialize and apply theme
     initializeTheme();
+    
+    // Detection worker thread will be initialized lazily when first needed
 }
 
 MainWindow::~MainWindow() {
+    // Stop detection worker thread
+    if (detectionThread) {
+        detectionThread->quit();
+        detectionThread->wait();
+    }
+    if (detectionWorker) {
+        delete detectionWorker;
+    }
+    
     delete documentState;
     delete fileOperations;
     delete regionOperations;
@@ -496,6 +514,211 @@ void MainWindow::onInvertSelection() {
         [this]() { if (canvas) canvas->update(); },
         [this]() { updateRegionListBox(); }
     );
+}
+
+void MainWindow::onMagicDetect() {
+    // Check if PDF is loaded
+    if (!documentState || documentState->image.isNull()) {
+        statusBar()->showMessage("Please load a PDF first", 3000);
+        return;
+    }
+    
+    // Lazy initialization of detection worker thread
+    if (!detectionWorker || !detectionThread) {
+        detectionThread = new QThread(this);
+        detectionWorker = new DetectionWorker();
+        
+        // Move worker to thread BEFORE connecting signals
+        detectionWorker->moveToThread(detectionThread);
+        
+        // Connect detection worker signals
+        QObject::connect(detectionWorker, &DetectionWorker::detectionComplete, 
+                         this, &MainWindow::onDetectionComplete, Qt::QueuedConnection);
+        QObject::connect(detectionWorker, &DetectionWorker::detectionError, 
+                         this, &MainWindow::onDetectionError, Qt::QueuedConnection);
+        QObject::connect(detectionWorker, &DetectionWorker::detectionProgress, 
+                         this, &MainWindow::onDetectionProgress, Qt::QueuedConnection);
+        
+        // Connect thread finished signal to delete worker
+        QObject::connect(detectionThread, &QThread::finished, detectionWorker, &QObject::deleteLater);
+        
+        // Start worker thread
+        detectionThread->start();
+    }
+    
+    // Check if already detecting
+    if (isDetecting) {
+        statusBar()->showMessage("Detection already in progress...", 2000);
+        return;
+    }
+    
+    // Set flag and disable button
+    isDetecting = true;
+    if (toolbarWidget && toolbarWidget->getMagicDetectButton()) {
+        toolbarWidget->getMagicDetectButton()->setEnabled(false);
+    }
+    
+    // Start detection in worker thread (using OCR-first method)
+    statusBar()->showMessage("Detecting regions...", 0);
+    QMetaObject::invokeMethod(detectionWorker, "detectRegions", Qt::QueuedConnection,
+                              Q_ARG(QImage, documentState->image),
+                              Q_ARG(QString, QString("ocr-first")));
+}
+
+void MainWindow::onDetectionProgress(int percent, const QString& message) {
+    statusBar()->showMessage(QString("Detecting regions... %1% - %2").arg(percent).arg(message), 0);
+}
+
+void MainWindow::onRegionsAcceptedFromDetection(const QList<DetectedRegion>& regions) {
+    if (!currentDetectionResult) {
+        statusBar()->showMessage("Error: No detection result available", 3000);
+        return;
+    }
+    const DetectionResult& result = *currentDetectionResult;
+    if (regions.isEmpty()) {
+        statusBar()->showMessage("No regions selected", 2000);
+        return;
+    }
+    
+    if (!documentState) {
+        statusBar()->showMessage("Error: No document state", 3000);
+        return;
+    }
+    
+    // Save state for undo (entire batch creation can be undone)
+    documentState->saveState();
+    
+    // Create mapping from region index to generated name
+    QMap<int, QString> regionIndexToName;
+    
+    // Generate region names and create regions with inferred types and colors
+    int regionNumber = 1;
+    for (int i = 0; i < regions.size(); ++i) {
+        const DetectedRegion& detectedRegion = regions[i];
+        
+        // Generate name: "Cell_1", "Cell_2", etc.
+        QString name;
+        do {
+            name = QString("Cell_%1").arg(regionNumber);
+            regionNumber++;
+        } while (documentState->hasRegion(name));
+        
+        regionIndexToName[i] = name;
+        
+        // Use inferred type from detection, or default to "letters"
+        QString regionType = detectedRegion.inferredType;
+        if (regionType.isEmpty() || regionType == "unknown") {
+            regionType = "letters"; // Default type
+        }
+        
+        // Use suggested color from detection, or default to "blue"
+        QString color = detectedRegion.suggestedColor;
+        if (color.isEmpty()) {
+            color = "blue"; // Default color
+        }
+        
+        // Create RegionData from DetectedRegion with inferred type and color
+        RegionData region(name, detectedRegion.coords, color, "");
+        region.regionType = regionType;
+        
+        // Set group if suggested (will be added to group later)
+        if (!detectedRegion.suggestedGroup.isEmpty()) {
+            region.group = detectedRegion.suggestedGroup;
+        }
+        
+        // Add to document state
+        documentState->addRegion(name, region);
+    }
+    
+    // Create groups from inferred groups
+    for (const DetectedGroup& inferredGroup : result.inferredGroups) {
+        // Create the group if it doesn't exist
+        if (!documentState->hasGroup(inferredGroup.name)) {
+            documentState->createGroup(inferredGroup.name);
+        }
+        
+        // Map group region names to actual created region names
+        // The inferredGroup.regionNames are placeholder names like "Postal_code_cell_1"
+        // We need to map them to actual regions based on suggestedGroup field
+        for (int i = 0; i < regions.size(); ++i) {
+            const DetectedRegion& detectedRegion = regions[i];
+            if (detectedRegion.suggestedGroup == inferredGroup.name) {
+                QString actualRegionName = regionIndexToName[i];
+                documentState->addRegionToGroup(actualRegionName, inferredGroup.name);
+            }
+        }
+    }
+    
+    // Also handle regions with suggestedGroup that weren't in inferredGroups
+    // (fallback for regions that have suggestedGroup but weren't part of a formal group)
+    for (int i = 0; i < regions.size(); ++i) {
+        const DetectedRegion& detectedRegion = regions[i];
+        if (!detectedRegion.suggestedGroup.isEmpty()) {
+            QString groupName = detectedRegion.suggestedGroup;
+            QString actualRegionName = regionIndexToName[i];
+            
+            // Check if region is already in a group (from inferredGroups above)
+            RegionData region = documentState->getRegion(actualRegionName);
+            if (region.group.isEmpty()) {
+                // Not in a group yet, create one if needed and add
+                if (!documentState->hasGroup(groupName)) {
+                    documentState->createGroup(groupName);
+                }
+                documentState->addRegionToGroup(actualRegionName, groupName);
+            }
+        }
+    }
+    
+    // Update UI
+    updateRegionListBox();
+    if (canvas) {
+        canvas->update();
+    }
+    
+    int groupsCreated = result.inferredGroups.size();
+    QString message = QString("Created %1 regions").arg(regions.size());
+    if (groupsCreated > 0) {
+        message += QString(" in %1 group(s)").arg(groupsCreated);
+    }
+    statusBar()->showMessage(message, 3000);
+}
+
+void MainWindow::onDetectionError(const QString& error) {
+    statusBar()->showMessage(QString("Detection failed: %1").arg(error), 5000);
+    isDetecting = false;
+    if (toolbarWidget && toolbarWidget->getMagicDetectButton()) {
+        toolbarWidget->getMagicDetectButton()->setEnabled(true);
+    }
+}
+
+void MainWindow::onDetectionComplete(const DetectionResult& result) {
+    isDetecting = false;
+    if (toolbarWidget && toolbarWidget->getMagicDetectButton()) {
+        toolbarWidget->getMagicDetectButton()->setEnabled(true);
+    }
+    
+    // Check if any regions were detected
+    if (result.totalDetected == 0) {
+        statusBar()->showMessage("No regions detected. Try adjusting detection parameters or use manual mode.", 5000);
+        return;
+    }
+    
+    // Store result in member variable for access
+    currentDetectionResult = const_cast<DetectionResult*>(&result);
+    
+    // Show preview dialog
+    DetectionPreviewDialog* dialog = new DetectionPreviewDialog(this, result, documentState->image);
+    connect(dialog, &DetectionPreviewDialog::regionsAccepted, this, &MainWindow::onRegionsAcceptedFromDetection);
+    
+    int resultCode = dialog->exec();
+    currentDetectionResult = nullptr;
+    delete dialog;
+    
+    if (resultCode == QDialog::Accepted) {
+        statusBar()->showMessage("Regions accepted and created", 3000);
+    } else {
+        statusBar()->showMessage("Detection cancelled", 2000);
+    }
 }
 
 void MainWindow::showHelp() {

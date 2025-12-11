@@ -25,10 +25,17 @@
 #include <QtGui/QDragMoveEvent>
 #include <QtGui/QDropEvent>
 #include "../models/DocumentState.h"
+#include "../utils/RegionDetector.h"
 #include "canvas/Canvas.h"
 #include "components/widgets/ToolbarWidget.h"
 #include "components/widgets/ControlPanelWidget.h"
 #include "components/widgets/SidePanelWidget.h"
+
+// Forward declarations
+class QThread;
+namespace ocr_orc {
+    class DetectionWorker;
+}
 #include "mainwindow/operations/file/MainWindowFileOperations.h"
 #include "mainwindow/operations/region/MainWindowRegionOperations.h"
 #include "mainwindow/shortcuts/MainWindowKeyboardShortcuts.h"
@@ -242,6 +249,36 @@ private slots:
     void onInvertSelection();
     
     /**
+     * @brief Handle Magic Detect button click - auto-detect regions
+     */
+    void onMagicDetect();
+    
+    /**
+     * @brief Handle detection completion
+     * @param result DetectionResult with detected regions
+     */
+    void onDetectionComplete(const DetectionResult& result);
+    
+    /**
+     * @brief Handle detection error
+     * @param error Error message
+     */
+    void onDetectionError(const QString& error);
+    
+    /**
+     * @brief Handle detection progress updates
+     * @param percent Progress percentage (0-100)
+     * @param message Status message
+     */
+    void onDetectionProgress(int percent, const QString& message);
+    
+    /**
+     * @brief Handle regions accepted from detection preview dialog
+     * @param regions List of accepted DetectedRegion objects
+     */
+    void onRegionsAcceptedFromDetection(const QList<DetectedRegion>& regions);
+    
+    /**
      * @brief Show help window
      */
     void showHelp();
@@ -379,6 +416,12 @@ private:
      */
     void applyTheme();
 
+    // Detection worker thread
+    QThread* detectionThread;
+    ocr_orc::DetectionWorker* detectionWorker;
+    bool isDetecting;
+    DetectionResult* currentDetectionResult;  // Store result for dialog access
+    
     // UI Components - Layout
     QWidget* centralWidget;
     QVBoxLayout* mainLayout;

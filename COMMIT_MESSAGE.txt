@@ -87,3 +87,5 @@ Fixed icons that were incorrectly showing black in dark mode:
 This commit significantly improves the application's theme consistency and
 user experience, ensuring all UI elements properly adapt to light and dark
 modes with correct icon and text colors throughout the interface.
+
+

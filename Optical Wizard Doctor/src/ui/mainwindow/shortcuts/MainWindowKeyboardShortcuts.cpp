@@ -148,6 +148,13 @@ void MainWindowKeyboardShortcuts::setupShortcuts(MainWindow* mainWindow) {
     helpAction->setShortcutContext(Qt::WindowShortcut);
     QObject::connect(helpAction, SIGNAL(triggered()), mainWindow, SLOT(showHelp()));
     mainWindow->addAction(helpAction);
+    
+    // Magic Detect shortcut (Cmd+M / Ctrl+M)
+    QAction* magicDetectAction = new QAction(mainWindow);
+    magicDetectAction->setShortcut(QKeySequence(MODIFIER | Qt::Key_M));
+    magicDetectAction->setShortcutContext(Qt::WindowShortcut);
+    QObject::connect(magicDetectAction, SIGNAL(triggered()), mainWindow, SLOT(onMagicDetect()));
+    mainWindow->addAction(magicDetectAction);
 }
 
 } // namespace ocr_orc

@@ -33,6 +33,7 @@ public:
     QPushButton* getZoomInButton() const { return zoomInButton; }
     QPushButton* getZoomResetButton() const { return zoomResetButton; }
     QPushButton* getRotateButton() const { return rotateButton; }
+    QPushButton* getMagicDetectButton() const { return magicDetectButton; }
     QLabel* getZoomLabel() const { return zoomLabel; }
     QPushButton* getGroupButton() const { return groupButton; }
     QPushButton* getUngroupButton() const { return ungroupButton; }
@@ -97,6 +98,11 @@ signals:
     void rotateClicked(bool checked);
     
     /**
+     * @brief Emitted when Magic Detect button is clicked
+     */
+    void magicDetectClicked();
+    
+    /**
      * @brief Emitted when group button is clicked
      */
     void groupClicked();
@@ -134,6 +140,7 @@ private:
     QPushButton* zoomInButton;
     QPushButton* zoomResetButton;
     QPushButton* rotateButton;
+    QPushButton* magicDetectButton;
     QPushButton* groupButton;
     QPushButton* ungroupButton;
     QPushButton* undoButton;
