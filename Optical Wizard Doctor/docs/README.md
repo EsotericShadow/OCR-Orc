@@ -39,11 +39,14 @@ Development, planning, and historical documentation has been moved to `archive/`
 
 See `archive/README.md` for details.
 
-## Production Documentation
+### Production & Testing
+- **PRODUCTION_CHECKLIST.md** - Production readiness checklist
+- **TEST_CHECKLIST.md** - Region feature test checklist
 
-For production release information, see:
-- **RELEASE_NOTES.md** (root) - Release notes
-- **PRODUCTION_CHECKLIST.md** (root) - Production readiness checklist
-- **BUILD_INSTRUCTIONS.md** (root) - Build instructions
-- **CHANGELOG.md** (root) - Version history
+## Production Documentation (Root Level)
+
+For production release information, see files in the `Optical Wizard Doctor/` root directory:
+- **RELEASE_NOTES.md** - Release notes
+- **BUILD_INSTRUCTIONS.md** - Build instructions
+- **CHANGELOG.md** - Version history
 

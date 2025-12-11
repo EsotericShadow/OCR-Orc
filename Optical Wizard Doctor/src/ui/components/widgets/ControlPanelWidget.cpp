@@ -1,6 +1,7 @@
 #include "ControlPanelWidget.h"
 #include "../icons/IconManager.h"
 #include <QtWidgets/QHBoxLayout>
+#include <QtCore/QCoreApplication>
 
 namespace ocr_orc {
 
@@ -11,7 +12,6 @@ ControlPanelWidget::ControlPanelWidget(QWidget *parent)
     , exportCoordinatesButton(nullptr)
     , exportMaskButton(nullptr)
     , loadCoordinatesButton(nullptr)
-    , testExtractionButton(nullptr)
     , regionNameLabel(nullptr)
     , regionNameEdit(nullptr)
     , groupLabel(nullptr)
@@ -41,8 +41,8 @@ void ControlPanelWidget::setupUI() {
     
     setupFile(layout);
     layout->addSpacing(20);
-    setupRegionInput(layout);
-    layout->addSpacing(20);
+    // Region input removed - now handled via dialog when creating regions
+    // Name/color/group editing is done in sidebar
     setupActions(layout);
     layout->addStretch();
 }
@@ -126,66 +126,19 @@ void ControlPanelWidget::setupFile(QHBoxLayout* layout) {
     connect(loadCoordinatesButton, &QPushButton::clicked, this, &ControlPanelWidget::loadCoordinatesClicked);
     layout->addWidget(loadCoordinatesButton);
     
-    testExtractionButton = new QPushButton(this);
-    testExtractionButton->setFixedSize(40, 40);
-    testExtractionButton->setIcon(IconManager::instance().getIcon("edit"));
-    testExtractionButton->setIconSize(QSize(24, 24));
-    testExtractionButton->setToolTip("Test Extraction - Test OCR extraction (future feature)");
-    testExtractionButton->setStyleSheet(
-        "QPushButton {"
-        "    border: 1px solid #757575;"
-        "    border-radius: 4px;"
-        "    background-color: #757575;"
-        "    color: white;"
-        "}"
-        "QPushButton:hover {"
-        "    background-color: #616161;"
-        "    border-color: #616161;"
-        "}"
-        "QPushButton:pressed {"
-        "    background-color: #424242;"
-        "}"
-    );
-    layout->addWidget(testExtractionButton);
+    // testExtractionButton removed - feature not implemented
 }
 
-void ControlPanelWidget::setupRegionInput(QHBoxLayout* layout) {
-    regionNameLabel = new QLabel("Region Name:", this);
-    regionNameLabel->setStyleSheet("color: #000000;");
-    layout->addWidget(regionNameLabel);
-    
-    regionNameEdit = new QLineEdit("Last Name Cell 1", this);
-    regionNameEdit->setMinimumWidth(120);
-    regionNameEdit->setMaximumWidth(250);
-    regionNameEdit->setStyleSheet("color: #000000; background-color: #ffffff;");
-    regionNameEdit->setToolTip("Name for the new region\nLeave empty for auto-generated names");
-    layout->addWidget(regionNameEdit);
-    
-    groupLabel = new QLabel("Group:", this);
-    groupLabel->setStyleSheet("color: #000000;");
-    groupLabel->setToolTip("Optional group name for the new region");
-    layout->addWidget(groupLabel);
-    
-    groupEdit = new QLineEdit("", this);
-    groupEdit->setMinimumWidth(100);
-    groupEdit->setMaximumWidth(180);
-    groupEdit->setStyleSheet("color: #000000; background-color: #ffffff;");
-    groupEdit->setPlaceholderText("(optional)");
-    groupEdit->setToolTip("Optional group name (e.g., 'lastname', 'firstname')\nRegions can be organized into groups");
-    layout->addWidget(groupEdit);
-    
-    colorLabel = new QLabel("Color:", this);
-    colorLabel->setStyleSheet("color: #000000;");
-    colorLabel->setToolTip("Color for the new region");
-    layout->addWidget(colorLabel);
-    
-    colorComboBox = new QComboBox(this);
-    colorComboBox->addItems(QStringList() << "blue" << "red" << "green" << "yellow" << "purple" << "orange" << "cyan");
-    colorComboBox->setMinimumWidth(70);
-    colorComboBox->setMaximumWidth(120);
-    colorComboBox->setStyleSheet("color: #000000; background-color: #ffffff;");
-    colorComboBox->setToolTip("Color for the new region border and fill");
-    layout->addWidget(colorComboBox);
+void ControlPanelWidget::setupRegionInput(QHBoxLayout* /* layout */) {
+    // Region input removed - region creation now prompts for name via dialog
+    // Color defaults to blue, group assignment is done in sidebar
+    // Keep widgets as nullptr for backward compatibility with getters
+    regionNameLabel = nullptr;
+    regionNameEdit = nullptr;
+    groupLabel = nullptr;
+    groupEdit = nullptr;
+    colorLabel = nullptr;
+    colorComboBox = nullptr;
 }
 
 void ControlPanelWidget::setupActions(QHBoxLayout* layout) {
@@ -240,27 +193,60 @@ void ControlPanelWidget::setupActions(QHBoxLayout* layout) {
 }
 
 QString ControlPanelWidget::getRegionName() const {
-    return regionNameEdit->text().trimmed();
+    // Region name input removed - now handled via dialog
+    return QString();
 }
 
 QString ControlPanelWidget::getGroupName() const {
-    return groupEdit->text().trimmed();
+    // Group input removed - now handled in sidebar
+    return QString();
 }
 
 QString ControlPanelWidget::getSelectedColor() const {
-    return colorComboBox->currentText();
+    // Color selection removed - defaults to blue, can be changed in sidebar
+    return "blue";
 }
 
 void ControlPanelWidget::clearRegionName() {
-    regionNameEdit->clear();
+    // Region name input removed - now handled via dialog
 }
 
 void ControlPanelWidget::clearGroupName() {
-    groupEdit->clear();
+    // Group input removed - now handled in sidebar
 }
 
 void ControlPanelWidget::setFileLabel(const QString& text) {
     fileLabel->setText(text);
+}
+
+void ControlPanelWidget::refreshIcons() {
+    // Clear icon cache first to force regeneration with new colors
+    IconManager::instance().clearIconCache();
+    
+    // Refresh all button icons
+    if (loadPdfButton) {
+        loadPdfButton->setIcon(QIcon()); // Clear first to force refresh
+        QCoreApplication::processEvents();
+        loadPdfButton->setIcon(IconManager::instance().getIcon("open"));
+    }
+    if (exportCoordinatesButton) {
+        exportCoordinatesButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        exportCoordinatesButton->setIcon(IconManager::instance().getIcon("export"));
+    }
+    if (loadCoordinatesButton) {
+        loadCoordinatesButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        loadCoordinatesButton->setIcon(IconManager::instance().getIcon("import"));
+    }
+    if (editSelectedButton) {
+        editSelectedButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        editSelectedButton->setIcon(IconManager::instance().getIcon("edit"));
+    }
+    
+    // Force widget update
+    update();
 }
 
 } // namespace ocr_orc

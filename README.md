@@ -24,7 +24,22 @@ OCR-Orc is a desktop GUI application designed to facilitate accurate OCR (Optica
 - **Visual Feedback**: Hover highlighting, selection indicators, resize handles
 - **Theme Support**: Light, dark, and system theme options
 
+## Application Type
+
+OCR-Orc is a **desktop GUI application** that provides a visual interface for coordinate calibration. It is designed to be:
+- Standalone (no server required)
+- Cross-platform compatible
+- Responsive and intuitive
+- Professional-grade for production use
+
 ## Purpose
+
+The primary purpose of OCR-Orc is to allow users to:
+
+1. **Visually define extraction regions** on PDF documents by drawing bounding boxes around specific areas (e.g., individual character cells, form fields)
+2. **Calibrate coordinate systems** using normalized percentages (0.0-1.0) that work across different document resolutions
+3. **Export coordinate data** in multiple formats (JSON, CSV, TXT, XML, YAML) for use in automated OCR extraction pipelines
+4. **Generate mask images** that black out everything except labeled regions, improving OCR accuracy by eliminating visual noise
 
 OCR-Orc is specifically designed for processing scanned handwritten forms where:
 - Forms contain individual character cells (like government ID forms)
@@ -91,12 +106,18 @@ See `Optical Wizard Doctor/src/ui/README.md` for detailed architecture documenta
 
 Comprehensive documentation is available in the `Optical Wizard Doctor/docs/` directory:
 
-- **SOFTWARE_DESIGN_SPECIFICATION.md** - High-level architecture
-- **FUNCTIONAL_REQUIREMENTS.md** - Feature requirements
-- **USER_INTERFACE_SPECIFICATION.md** - UI components
-- **COORDINATE_SYSTEM.md** - Coordinate system explanation
-- **EXPORT_FORMATS.md** - Export format specifications
-- **KEYBOARD_SHORTCUTS.md** - Complete hotkey reference
+1. **README.md** - Overview and introduction (this file)
+2. **SOFTWARE_DESIGN_SPECIFICATION.md** - High-level architecture and design
+3. **FUNCTIONAL_REQUIREMENTS.md** - Detailed feature requirements
+4. **USER_INTERFACE_SPECIFICATION.md** - UI components and layout
+5. **FUNCTION_REFERENCE.md** - Complete function documentation
+6. **DATA_STRUCTURES.md** - Data models and internal structures
+7. **EXPORT_FORMATS.md** - Export format specifications
+8. **WORKFLOW_DOCUMENTATION.md** - User workflows and use cases
+9. **KEYBOARD_SHORTCUTS.md** - Complete hotkey reference
+10. **COORDINATE_SYSTEM.md** - Coordinate system explanation
+
+See `Optical Wizard Doctor/docs/DOCUMENTATION_INDEX.md` for a complete navigation guide.
 
 ## Status
 
@@ -104,13 +125,16 @@ Comprehensive documentation is available in the `Optical Wizard Doctor/docs/` di
 **Status**: ✅ Production Ready  
 **Platform**: macOS (with cross-platform support planned)
 
-## Recent Updates
+## Recent Updates (v1.0.0)
 
 - ✅ Complete rotation functionality for regions
-- ✅ Comprehensive unit test suite (18/19 tests passing)
+- ✅ Comprehensive unit test suite
 - ✅ Production-ready build configuration
+- ✅ Clean codebase with conditional debug output
+- ✅ Full macOS menu bar integration
 - ✅ Modern UI with theme support
 - ✅ Modular architecture with clear separation of concerns
+- ✅ Consolidated export dialog
 - ✅ Full undo/redo system with UI synchronization
 - ✅ Real-time coordinate editing
 

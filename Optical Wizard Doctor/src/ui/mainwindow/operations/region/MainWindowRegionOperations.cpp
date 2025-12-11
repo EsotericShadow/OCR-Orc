@@ -3,12 +3,14 @@
 #include "../../../../models/RegionData.h"
 #include "../../../canvas/Canvas.h"
 #include "../../../components/widgets/ControlPanelWidget.h"
+#include "../../../ThemeManager.h"
 #include <QtCore/QObject>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QList>
 #include <QtCore/QSet>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QMessageBox>
+#include <QtGui/QPalette>
 #include <QtWidgets/QVBoxLayout>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
@@ -18,6 +20,19 @@
 
 namespace ocr_orc {
 
+namespace {
+void applyDialogPalette(QDialog& dialog, const ThemeColors& colors) {
+    QPalette palette = dialog.palette();
+    palette.setColor(QPalette::Window, colors.surface);
+    palette.setColor(QPalette::WindowText, colors.text);
+    palette.setColor(QPalette::Base, colors.background);
+    palette.setColor(QPalette::Text, colors.text);
+    palette.setColor(QPalette::Button, colors.surface);
+    palette.setColor(QPalette::ButtonText, colors.text);
+    dialog.setPalette(palette);
+}
+} // namespace
+
 MainWindowRegionOperations::MainWindowRegionOperations() {
 }
 
@@ -25,28 +40,34 @@ MainWindowRegionOperations::~MainWindowRegionOperations() {
 }
 
 QString MainWindowRegionOperations::showEditNameDialog(QWidget* parentWidget, const QString& currentName) const {
+    ThemeColors themeColors = ThemeManager::instance().getColors();
+
     QDialog dialog(parentWidget);
     dialog.setWindowTitle("Edit Region Name");
     dialog.setMinimumSize(350, 120);
+    dialog.setStyleSheet(QString("QDialog { background-color: %1; color: %2; }")
+                             .arg(themeColors.surface.name(), themeColors.text.name()));
+    applyDialogPalette(dialog, themeColors);
     
     QVBoxLayout* layout = new QVBoxLayout(&dialog);
     layout->setSpacing(10);
     
     QLabel* label = new QLabel("New Name:", &dialog);
-    label->setStyleSheet("color: #000000;");
+    label->setStyleSheet(QString("color: %1;").arg(themeColors.text.name()));
     layout->addWidget(label);
     
     QLineEdit* lineEdit = new QLineEdit(&dialog);
     lineEdit->setText(currentName);
     lineEdit->selectAll();  // Select all for easy replacement
     lineEdit->setFocus();
-    lineEdit->setStyleSheet("color: #000000; background-color: #ffffff;");
+    lineEdit->setStyleSheet(QString("color: %1; background-color: %2;")
+                                .arg(themeColors.text.name(), themeColors.background.name()));
     layout->addWidget(lineEdit);
     
     QPushButton* saveButton = new QPushButton("Save", &dialog);
-    saveButton->setStyleSheet("color: #000000;");
+    saveButton->setStyleSheet(QString("color: %1;").arg(themeColors.text.name()));
     QPushButton* cancelButton = new QPushButton("Cancel", &dialog);
-    cancelButton->setStyleSheet("color: #000000;");
+    cancelButton->setStyleSheet(QString("color: %1;").arg(themeColors.text.name()));
     
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
@@ -74,27 +95,33 @@ QString MainWindowRegionOperations::showChangeColorDialog(QWidget* parentWidget,
         return QString();
     }
     
+    ThemeColors themeColors = ThemeManager::instance().getColors();
+
     RegionData region = getRegion(regionName);
     QString currentColor = region.color;
     
     QDialog dialog(parentWidget);
     dialog.setWindowTitle("Change Region Color");
     dialog.setMinimumSize(300, 150);
+    dialog.setStyleSheet(QString("QDialog { background-color: %1; color: %2; }")
+                             .arg(themeColors.surface.name(), themeColors.text.name()));
+    applyDialogPalette(dialog, themeColors);
     
     QVBoxLayout* layout = new QVBoxLayout(&dialog);
     layout->setSpacing(10);
     
     QLabel* label = new QLabel("Select Color:", &dialog);
-    label->setStyleSheet("color: #000000;");
+    label->setStyleSheet(QString("color: %1;").arg(themeColors.text.name()));
     layout->addWidget(label);
     
     QComboBox* colorCombo = new QComboBox(&dialog);
-    colorCombo->setStyleSheet("color: #000000; background-color: #ffffff;");
-    QStringList colors = {"blue", "red", "green", "yellow", "purple", "orange", "cyan"};
-    colorCombo->addItems(colors);
+    colorCombo->setStyleSheet(QString("color: %1; background-color: %2;")
+                                  .arg(themeColors.text.name(), themeColors.background.name()));
+    QStringList colorsList = {"blue", "red", "green", "yellow", "purple", "orange", "cyan"};
+    colorCombo->addItems(colorsList);
     
     // Pre-select current color
-    int currentIndex = colors.indexOf(currentColor);
+    int currentIndex = colorsList.indexOf(currentColor);
     if (currentIndex >= 0) {
         colorCombo->setCurrentIndex(currentIndex);
     } else {
@@ -104,9 +131,9 @@ QString MainWindowRegionOperations::showChangeColorDialog(QWidget* parentWidget,
     layout->addWidget(colorCombo);
     
     QPushButton* saveButton = new QPushButton("Save", &dialog);
-    saveButton->setStyleSheet("color: #000000;");
+    saveButton->setStyleSheet(QString("color: %1;").arg(themeColors.text.name()));
     QPushButton* cancelButton = new QPushButton("Cancel", &dialog);
-    cancelButton->setStyleSheet("color: #000000;");
+    cancelButton->setStyleSheet(QString("color: %1;").arg(themeColors.text.name()));
     
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
@@ -125,9 +152,9 @@ QString MainWindowRegionOperations::showChangeColorDialog(QWidget* parentWidget,
 }
 
 QString MainWindowRegionOperations::generateRegionName(DocumentState* documentState) const {
-    // Generate "Region 1", "Region 2", etc.
+    // Generate "Cell 1", "Cell 2", etc.
     int counter = 1;
-    QString baseName = "Region";
+    QString baseName = "Cell";
     QString name;
     
     do {
@@ -136,6 +163,67 @@ QString MainWindowRegionOperations::generateRegionName(DocumentState* documentSt
     } while (documentState && documentState->hasRegion(name));
     
     return name;
+}
+
+QString MainWindowRegionOperations::showCreateRegionNameDialog(QWidget* parentWidget,
+                                                               DocumentState* documentState,
+                                                               const GenerateRegionNameCallback& generateRegionNameCallback) const {
+    // Use callback if provided, otherwise use internal method
+    QString defaultName;
+    if (generateRegionNameCallback) {
+        defaultName = generateRegionNameCallback();
+    } else {
+        defaultName = generateRegionName(documentState);
+    }
+    
+    ThemeColors themeColors = ThemeManager::instance().getColors();
+
+    QDialog dialog(parentWidget);
+    dialog.setWindowTitle("Name Region");
+    dialog.setMinimumSize(350, 120);
+    dialog.setStyleSheet(QString("QDialog { background-color: %1; color: %2; }")
+                             .arg(themeColors.surface.name(), themeColors.text.name()));
+    applyDialogPalette(dialog, themeColors);
+    
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    layout->setSpacing(10);
+    
+    QLabel* label = new QLabel("Region Name:", &dialog);
+    label->setStyleSheet(QString("color: %1;").arg(themeColors.text.name()));
+    layout->addWidget(label);
+    
+    QLineEdit* lineEdit = new QLineEdit(&dialog);
+    lineEdit->setText(defaultName);
+    lineEdit->selectAll();  // Select all for easy replacement
+    lineEdit->setFocus();
+    lineEdit->setStyleSheet(QString("color: %1; background-color: %2;")
+                                .arg(themeColors.text.name(), themeColors.background.name()));
+    layout->addWidget(lineEdit);
+    
+    QPushButton* createButton = new QPushButton("Create", &dialog);
+    createButton->setStyleSheet(QString("color: %1;").arg(themeColors.text.name()));
+    QPushButton* cancelButton = new QPushButton("Cancel", &dialog);
+    cancelButton->setStyleSheet(QString("color: %1;").arg(themeColors.text.name()));
+    
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(createButton);
+    buttonLayout->addWidget(cancelButton);
+    layout->addLayout(buttonLayout);
+    
+    // Connect Enter key to create
+    QObject::connect(lineEdit, &QLineEdit::returnPressed, createButton, &QPushButton::click);
+    QObject::connect(createButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    QObject::connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+    
+    if (dialog.exec() == QDialog::Accepted) {
+        QString name = lineEdit->text().trimmed();
+        if (!name.isEmpty()) {
+            return name;
+        }
+    }
+    
+    return QString(); // User cancelled or empty name
 }
 
 void MainWindowRegionOperations::autoIncrementRegionName(ControlPanelWidget* controlPanelWidget,
@@ -167,7 +255,9 @@ void MainWindowRegionOperations::autoIncrementRegionName(ControlPanelWidget* con
         QString newName = baseName + separator + QString::number(number);
         
         // Check if name already exists, keep incrementing if needed
-        while (hasRegion(newName)) {
+        // Use documentState directly if available, otherwise fall back to callback
+        while ((documentState && documentState->hasRegion(newName)) || 
+               (!documentState && hasRegion && hasRegion(newName))) {
             number++;
             newName = baseName + separator + QString::number(number);
         }
@@ -180,30 +270,26 @@ void MainWindowRegionOperations::autoIncrementRegionName(ControlPanelWidget* con
 
 void MainWindowRegionOperations::handleRegionCreationRequested(Canvas* canvas,
                                                                 DocumentState* documentState,
-                                                                ControlPanelWidget* controlPanelWidget,
-                                                                const GetRegionNameCallback& getRegionName,
-                                                                const GetSelectedColorCallback& getSelectedColor,
-                                                                const GetGroupNameCallback& getGroupName,
-                                                                const ClearGroupNameCallback& clearGroupName,
+                                                                ControlPanelWidget* /* controlPanelWidget */,
+                                                                const GetRegionNameCallback& /* getRegionName */,
+                                                                const GetSelectedColorCallback& /* getSelectedColor */,
+                                                                const GetGroupNameCallback& /* getGroupName */,
+                                                                const ClearGroupNameCallback& /* clearGroupName */,
                                                                 const FinishRegionCreationCallback& finishRegionCreation,
                                                                 const HasRegionCallback& hasRegion,
                                                                 const GenerateRegionNameCallback& generateRegionName,
-                                                                const AutoIncrementRegionNameCallback& autoIncrementRegionName) {
+                                                                const AutoIncrementRegionNameCallback& /* autoIncrementRegionName */) {
     if (!canvas || !documentState) {
         return;
     }
     
-    // Get region name, color, and group from control panel
-    QString regionName = getRegionName();
-    QString color = getSelectedColor();
-    if (color.isEmpty()) {
-        color = "blue"; // Default color
-    }
-    QString group = getGroupName();
+    // Show dialog to get region name (default: "Cell N")
+    QWidget* parentWidget = qobject_cast<QWidget*>(canvas->parent());
+    QString regionName = showCreateRegionNameDialog(parentWidget, documentState, generateRegionName);
     
-    // If name is empty, generate auto-incremented name
+    // If user cancelled, don't create region
     if (regionName.isEmpty()) {
-        regionName = generateRegionName();
+        return;
     }
     
     // Check for duplicate name - auto-increment instead of showing warning
@@ -215,24 +301,14 @@ void MainWindowRegionOperations::handleRegionCreationRequested(Canvas* canvas,
             finalRegionName = regionName + "_" + QString::number(counter);
             counter++;
         } while (hasRegion(finalRegionName));
-        
-        // Update the input field with the new name
-        if (controlPanelWidget) {
-            controlPanelWidget->getRegionNameEdit()->setText(finalRegionName);
-        }
     }
     
-    // Complete region creation (use finalRegionName which may have been auto-incremented)
-    if (finishRegionCreation(finalRegionName, color, group)) {
-        // Clear group field after creation (so next region doesn't auto-assign to same group)
-        if (clearGroupName) {
-            clearGroupName();
-        }
-        // Auto-increment region name if pattern detected (for next creation)
-        if (autoIncrementRegionName) {
-            autoIncrementRegionName();
-        }
-    }
+    // Default color is blue, no group assigned (user can add to group later in sidebar)
+    QString color = "blue";
+    QString group = QString(); // Empty group - user can add to group later
+    
+    // Complete region creation
+    finishRegionCreation(finalRegionName, color, group);
 }
 
 void MainWindowRegionOperations::handleRegionCreated(const QString& regionName,
@@ -296,6 +372,13 @@ void MainWindowRegionOperations::editSelected(QWidget* parentWidget,
                                                const ShowStatusMessageCallback& showStatusMessage) {
     if (!documentState || !canvas) {
         return;
+    }
+    
+    // Use parentWidget if provided, otherwise fall back to canvas parent
+    // This ensures dialogs are properly parented
+    QWidget* effectiveParent = parentWidget;
+    if (!effectiveParent && canvas) {
+        effectiveParent = qobject_cast<QWidget*>(canvas->parent());
     }
     
     // Get selected regions from canvas
@@ -474,6 +557,15 @@ void MainWindowRegionOperations::handleRegionColorChangeRequested(const QString&
         return;
     }
     
+    // Use getRegion callback to validate and get current region data
+    if (getRegion) {
+        RegionData currentRegion = getRegion(regionName);
+        // Validate region exists and has valid data
+        if (currentRegion.name.isEmpty()) {
+            return; // Invalid region
+        }
+    }
+    
     QString newColor = showChangeColorDialog(regionName);
     if (newColor.isEmpty()) {
         return; // User cancelled
@@ -521,6 +613,13 @@ void MainWindowRegionOperations::deleteSelected(QWidget* parentWidget,
                                                  const ShowStatusMessageCallback& showStatusMessage) {
     if (!documentState || !canvas) {
         return;
+    }
+    
+    // Use parentWidget if provided, otherwise fall back to canvas parent
+    // This ensures dialogs are properly parented
+    QWidget* effectiveParent = parentWidget;
+    if (!effectiveParent && canvas) {
+        effectiveParent = qobject_cast<QWidget*>(canvas->parent());
     }
     
     QSet<QString> selectedRegions = getSelectedRegions();

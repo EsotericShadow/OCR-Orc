@@ -27,7 +27,6 @@ public:
     QPushButton* getExportCoordinatesButton() const { return exportCoordinatesButton; }
     QPushButton* getExportMaskButton() const { return nullptr; }  // Deprecated - consolidated into export button
     QPushButton* getLoadCoordinatesButton() const { return loadCoordinatesButton; }
-    QPushButton* getTestExtractionButton() const { return testExtractionButton; }
     QLineEdit* getRegionNameEdit() const { return regionNameEdit; }
     QLineEdit* getGroupEdit() const { return groupEdit; }
     QComboBox* getColorComboBox() const { return colorComboBox; }
@@ -68,6 +67,12 @@ public:
      * @param text File name or status text
      */
     void setFileLabel(const QString& text);
+    
+    /**
+     * @brief Refresh all icons based on current theme
+     * Call this when theme changes to update icon colors
+     */
+    void refreshIcons();
 
 signals:
     /**
@@ -112,7 +117,6 @@ private:
     QPushButton* exportCoordinatesButton;
     QPushButton* exportMaskButton;
     QPushButton* loadCoordinatesButton;
-    QPushButton* testExtractionButton;
     QLabel* regionNameLabel;
     QLineEdit* regionNameEdit;
     QLabel* groupLabel;

@@ -58,6 +58,12 @@ public:
      * @param enabled Whether rotate mode is enabled
      */
     void updateRotateButton(bool enabled);
+    
+    /**
+     * @brief Refresh all icons based on current theme
+     * Call this when theme changes to update icon colors
+     */
+    void refreshIcons();
 
 signals:
     /**

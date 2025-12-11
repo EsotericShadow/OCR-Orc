@@ -18,6 +18,7 @@
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QInputDialog>
 #include <QtWidgets/QDialog>
+#include <QtCore/QDebug>
 #include <QtWidgets/QTextEdit>
 #include <QtWidgets/QVBoxLayout>
 #include <QtWidgets/QHBoxLayout>
@@ -186,6 +187,15 @@ void MainWindow::setupCanvas() {
         [this]() { if (canvas) canvas->invalidateCoordinateCache(); }
     );
     
+    // Connect zoom changed signal directly here (after canvas is fully initialized)
+    qDebug() << "[ZOOM DEBUG] Connecting zoomChanged in MainWindow...";
+    bool zoomConnected = QObject::connect(canvas, SIGNAL(zoomChanged(double)), 
+                                           this, SLOT(updateZoomLabel(double)));
+    qDebug() << "[ZOOM DEBUG] Connection result:" << zoomConnected;
+    if (!zoomConnected) {
+        qWarning() << "[ZOOM DEBUG] FAILED to connect zoomChanged!";
+    }
+    
     // Setup keyboard shortcuts for canvas (undo/redo)
     canvasWiring->setupCanvasShortcuts(this, canvas);
     
@@ -268,6 +278,18 @@ void MainWindow::updateZoomLabel() {
             }
         }
     );
+}
+
+void MainWindow::updateZoomLabel(double zoomLevel) {
+    // Direct update with provided zoom level (from signal)
+    qDebug() << "[ZOOM DEBUG] *** MainWindow::updateZoomLabel(" << zoomLevel << ") CALLED ***";
+    if (toolbarWidget) {
+        qDebug() << "[ZOOM DEBUG] Calling toolbarWidget->updateZoomLabel(" << zoomLevel << ")";
+        toolbarWidget->updateZoomLabel(zoomLevel);
+        qDebug() << "[ZOOM DEBUG] toolbarWidget->updateZoomLabel completed";
+    } else {
+        qWarning() << "[ZOOM DEBUG] ERROR: toolbarWidget is null!";
+    }
 }
 
 void MainWindow::onUndo() {
@@ -508,12 +530,15 @@ void MainWindow::applyTheme() {
     // Apply to all child widgets
     if (toolbarWidget) {
         themeManager.applyTheme(toolbarWidget);
+        toolbarWidget->refreshIcons(); // Refresh icons when theme changes
     }
     if (controlPanelWidget) {
         themeManager.applyTheme(controlPanelWidget);
+        controlPanelWidget->refreshIcons(); // Refresh icons when theme changes
     }
     if (sidePanelWidget) {
         themeManager.applyTheme(sidePanelWidget);
+        sidePanelWidget->refreshIcons(); // Refresh icons when theme changes
     }
     if (canvas) {
         themeManager.applyTheme(canvas);

@@ -193,12 +193,35 @@ This index provides a guide to all documentation files in the OCR-Orc specificat
 
 ---
 
+## Additional Documentation
+
+### Production & Testing
+- **PRODUCTION_CHECKLIST.md** - Production readiness checklist
+- **TEST_CHECKLIST.md** - Region feature test checklist
+
+### Root Level Documentation
+Production release information is located in the `Optical Wizard Doctor/` root directory:
+- **RELEASE_NOTES.md** - Release notes for v1.0.0
+- **BUILD_INSTRUCTIONS.md** - Build and compilation instructions
+- **CHANGELOG.md** - Version history
+
+### Archived Documentation
+Development, planning, and historical documentation has been moved to `archive/` for reference. This includes:
+- Analysis and research documents
+- Planning documents
+- Deployment and distribution docs
+- Implementation plans
+- Phase reports
+- Debug documentation
+
+See `archive/README.md` for a complete list of archived documents.
+
 ## Documentation Navigation Guide
 
 ### For Architects and Designers
 
 **Start with:**
-1. README.md - Understand the application
+1. README.md (root) - Understand the application
 2. SOFTWARE_DESIGN_SPECIFICATION.md - Understand architecture
 3. FUNCTIONAL_REQUIREMENTS.md - Understand features
 

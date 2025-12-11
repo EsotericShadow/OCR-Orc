@@ -214,6 +214,12 @@ signals:
     void selectionChanged();
     
     /**
+     * @brief Signal emitted when zoom level changes
+     * @param zoomLevel The new zoom level
+     */
+    void zoomChanged(double zoomLevel);
+    
+    /**
      * @brief Signal emitted when mouse is released during region creation
      * MainWindow should respond by calling finishRegionCreation() with name/color/group
      */

@@ -682,6 +682,9 @@ void Canvas::zoomIn() {
                        scaleFactor, imageOffset, zoomController, coordinateCache);
     calculateLayout();
     update();
+    if (documentState) {
+        emit zoomChanged(documentState->zoomLevel);
+    }
 }
 
 void Canvas::zoomOut() {
@@ -690,6 +693,9 @@ void Canvas::zoomOut() {
                         scaleFactor, imageOffset, zoomController, coordinateCache);
     calculateLayout();
     update();
+    if (documentState) {
+        emit zoomChanged(documentState->zoomLevel);
+    }
 }
 
 void Canvas::zoomReset() {
@@ -698,6 +704,9 @@ void Canvas::zoomReset() {
                           scaleFactor, imageOffset, zoomController, coordinateCache);
     calculateLayout();
     update();
+    if (documentState) {
+        emit zoomChanged(documentState->zoomLevel);
+    }
 }
 
 void Canvas::setZoom(double zoomLevel) {
@@ -707,15 +716,33 @@ void Canvas::setZoom(double zoomLevel) {
                         zoomController, coordinateCache);
     calculateLayout();
     update();
+    // Always emit signal with the actual zoom level
+    if (documentState) {
+        emit zoomChanged(documentState->zoomLevel);
+    }
 }
 
 void Canvas::setZoomAtPoint(double zoomLevel, const QPointF& widgetPos) {
-    if (!zoomManager) return;
+    if (!zoomManager) {
+        qDebug() << "[ZOOM DEBUG] setZoomAtPoint: zoomManager is null!";
+        return;
+    }
+    qDebug() << "[ZOOM DEBUG] setZoomAtPoint called with zoomLevel=" << zoomLevel;
+    double oldZoom = documentState ? documentState->zoomLevel : 1.0;
     zoomManager->setZoomAtPoint(zoomLevel, widgetPos, documentState, documentImage,
                                width(), height(), scaleFactor, imageOffset,
                                zoomController, coordinateCache);
     calculateLayout();
     update();
+    // Always emit signal with the actual zoom level - zoomManager may have clamped the value
+    if (documentState) {
+        double finalZoom = documentState->zoomLevel;
+        qDebug() << "[ZOOM DEBUG] setZoomAtPoint: oldZoom=" << oldZoom << "finalZoom=" << finalZoom << "emitting zoomChanged signal";
+        emit zoomChanged(finalZoom);
+        qDebug() << "[ZOOM DEBUG] setZoomAtPoint: zoomChanged signal emitted";
+    } else {
+        qDebug() << "[ZOOM DEBUG] setZoomAtPoint: documentState is null, cannot emit signal";
+    }
 }
 
 double Canvas::getZoom() const {
@@ -732,8 +759,8 @@ void Canvas::wheelEvent(QWheelEvent* event) {
         return;
     }
     
-    // Disable wheel/pan during resize operations to prevent interference
-    if (isResizing) {
+    // Disable wheel/pan/zoom during interactive operations to prevent interference
+    if (isCreating || isDragging || isResizing || isRotating) {
         event->ignore();
         return;
     }
@@ -745,9 +772,27 @@ void Canvas::wheelEvent(QWheelEvent* event) {
         QPointF mousePos = event->position().toPoint();
         double delta = event->angleDelta().y() / static_cast<double>(CanvasConstants::WHEEL_DELTA_NORMALIZATION);
         double currentZoom = documentState->zoomLevel;
-        double zoomFactor = 1.0 - (delta * CanvasConstants::ZOOM_WHEEL_FACTOR);
+        // Inverted: scroll up zooms in, scroll down zooms out
+        double zoomFactor = 1.0 + (delta * CanvasConstants::ZOOM_WHEEL_FACTOR);
         double newZoom = currentZoom * zoomFactor;
-        setZoomAtPoint(newZoom, mousePos);
+        
+        // Clamp to valid range before setting to prevent reset issues
+        const double minZoom = CanvasConstants::MIN_ZOOM;
+        const double maxZoom = CanvasConstants::MAX_ZOOM;
+        newZoom = std::max(minZoom, std::min(maxZoom, newZoom));
+        
+        qDebug() << "[ZOOM DEBUG] wheelEvent: currentZoom=" << currentZoom << "newZoom=" << newZoom << "delta=" << delta;
+        
+        // Only update if zoom actually changed (prevents unnecessary updates at limits)
+        if (newZoom != currentZoom) {
+            qDebug() << "[ZOOM DEBUG] Calling setZoomAtPoint with newZoom=" << newZoom;
+            setZoomAtPoint(newZoom, mousePos);
+            if (documentState) {
+                emit zoomChanged(documentState->zoomLevel);
+            }
+        } else {
+            qDebug() << "[ZOOM DEBUG] Zoom unchanged, skipping setZoomAtPoint";
+        }
         event->accept();
     } else {
         QPointF delta = event->angleDelta();

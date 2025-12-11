@@ -8,6 +8,7 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QScrollArea>
 #include <QtCore/QSet>
+#include <QtCore/QCoreApplication>
 
 namespace ocr_orc {
 
@@ -811,6 +812,38 @@ void SidePanelWidget::toggleRegionEditor() {
 
 bool SidePanelWidget::isRegionEditorVisible() const {
     return regionEditorFrame && regionEditorFrame->isVisible();
+}
+
+void SidePanelWidget::refreshIcons() {
+    // Clear icon cache first to force regeneration with new colors
+    IconManager::instance().clearIconCache();
+    
+    // Refresh help button icon
+    if (helpButton) {
+        helpButton->setIcon(QIcon()); // Clear first to force refresh
+        QCoreApplication::processEvents(); // Process events to clear icon
+        helpButton->setIcon(IconManager::instance().getIcon("help"));
+    }
+    
+    // Refresh group buttons in region editor
+    if (createGroupButton) {
+        createGroupButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        createGroupButton->setIcon(IconManager::instance().getIcon("group"));
+    }
+    if (addToGroupButton) {
+        addToGroupButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        addToGroupButton->setIcon(IconManager::instance().getIcon("add"));
+    }
+    if (removeFromGroupButton) {
+        removeFromGroupButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        removeFromGroupButton->setIcon(IconManager::instance().getIcon("remove"));
+    }
+    
+    // Force widget update
+    update();
 }
 
 } // namespace ocr_orc

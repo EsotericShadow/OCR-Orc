@@ -47,6 +47,12 @@ public:
      * @param groupSizes Map of group names to region counts
      */
     void updateGroupListBox(const QList<QString>& groupNames, const QMap<QString, int>& groupSizes);
+    
+    /**
+     * @brief Refresh all icons based on current theme
+     * Call this when theme changes to update icon colors
+     */
+    void refreshIcons();
 
     /**
      * @brief Set info text content

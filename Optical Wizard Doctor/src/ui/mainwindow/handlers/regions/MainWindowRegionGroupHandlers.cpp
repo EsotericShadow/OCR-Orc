@@ -282,24 +282,24 @@ QString MainWindowRegionGroupHandlers::showChangeColorDialog(MainWindow* mainWin
 }
 
 void MainWindowRegionGroupHandlers::onRegionCreationRequested(MainWindow* mainWindow) {
-    if (!mainWindow || !mainWindow->canvas || !mainWindow->documentState || !mainWindow->controlPanelWidget) {
+    if (!mainWindow || !mainWindow->canvas || !mainWindow->documentState) {
         return;
     }
     
     mainWindow->regionOperations->handleRegionCreationRequested(
         mainWindow->canvas,
         mainWindow->documentState,
-        mainWindow->controlPanelWidget,
-        [mainWindow]() { return mainWindow->controlPanelWidget ? mainWindow->controlPanelWidget->getRegionName() : QString(); },
-        [mainWindow]() { return mainWindow->controlPanelWidget ? mainWindow->controlPanelWidget->getSelectedColor() : "blue"; },
-        [mainWindow]() { return mainWindow->controlPanelWidget ? mainWindow->controlPanelWidget->getGroupName() : QString(); },
-        [mainWindow]() { if (mainWindow->controlPanelWidget) mainWindow->controlPanelWidget->clearGroupName(); },
+        nullptr, // controlPanelWidget no longer needed
+        []() { return QString(); }, // getRegionName no longer needed
+        []() { return QString("blue"); }, // getSelectedColor - default to blue
+        []() { return QString(); }, // getGroupName - no group on creation
+        []() {}, // clearGroupName no longer needed
         [mainWindow](const QString& name, const QString& color, const QString& group) {
             return mainWindow->canvas ? mainWindow->canvas->finishRegionCreation(name, color, group) : false;
         },
         [mainWindow](const QString& name) { return mainWindow->documentState ? mainWindow->documentState->hasRegion(name) : false; },
         [mainWindow]() { return mainWindow->generateRegionName(); },
-        [mainWindow]() { mainWindow->autoIncrementRegionName(); }
+        []() {} // autoIncrementRegionName no longer needed
     );
 }
 

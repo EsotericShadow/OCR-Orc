@@ -1,0 +1,89 @@
+Fix zoom display update and comprehensive theme/icon improvements
+
+This commit addresses multiple UI/UX issues and implements a robust
+theme-aware icon system with proper color management for light and dark modes.
+
+## Zoom Display Fix
+- Fixed zoom percentage not updating in toolbar when zooming with Cmd+mouse wheel
+- Added consistent zoomChanged signal emission from Canvas for all zoom operations
+  (zoomIn, zoomOut, zoomReset, wheelEvent)
+- Connected zoomChanged signal directly to ToolbarWidget::updateZoomLabel
+- Ensures real-time zoom percentage display during all zoom interactions
+
+## Theme System Improvements
+- Fixed text colors in dialogs to properly adapt to theme:
+  * Light mode: black text on light backgrounds
+  * Dark mode: white text on dark backgrounds
+- Updated all region operation dialogs (name, color, edit, delete) to use
+  ThemeManager colors instead of hardcoded values
+- Applied theme-aware palette settings to all dialog widgets (QDialog, QLabel,
+  QLineEdit, QPushButton, QComboBox)
+
+## Icon System Overhaul
+- Implemented separate icon files approach for reliable theme-based coloring:
+  * Created white versions of all SVG icons (*_white.svg) for dark mode
+  * Original black SVGs used for light mode
+  * Total of 17 white icon variants created
+- Fixed IconManager to use ThemeManager::getEffectiveTheme() instead of
+  palette detection for accurate theme determination
+- Added icon caching system with color-specific keys to prevent wrong caching
+- Implemented refreshIcons() methods in:
+  * ToolbarWidget (zoom, rotate, group, undo/redo buttons)
+  * ControlPanelWidget (load PDF, export, load coordinates, edit selected)
+  * SidePanelWidget (help button, group management buttons)
+- All icons now automatically refresh when theme changes
+
+## Icon Color Fixes
+Fixed icons that were incorrectly showing black in dark mode:
+- Toggle rotate button (now white in dark mode)
+- Edit selected button (now white in dark mode)
+- Load coordinates button (now white in dark mode)
+- Export button (now white in dark mode)
+- Upload PDF button (now white in dark mode)
+- Create group button in sidebar (now white in dark mode)
+- Add to group button in sidebar (now white in dark mode)
+- Remove from group button in sidebar (now white in dark mode)
+- Help button question mark (now white in dark mode)
+
+## Code Quality Improvements
+- Fixed unused parameter warnings by implementing actual functionality:
+  * documentState parameter in autoIncrementRegionName now used for validation
+  * generateRegionName callback now properly passed and used in dialogs
+  * parentWidget parameter now used for proper dialog parenting
+  * getRegion callback now used for region validation
+  * context parameter in customMessageHandler now used for file/line logging
+- Improved debug output in IconManager with detailed SVG color replacement logging
+- Enhanced error handling and validation in region operations
+
+## UI Cleanup
+- Removed test extraction button completely (feature not implemented):
+  * Removed from ControlPanelWidget header and implementation
+  * Removed getter method
+  * Removed button creation and styling code
+  * Cleaned up all references
+
+## Technical Details
+- IconManager now uses ThemeManager singleton for theme detection
+- Icon cache cleared on theme change to force regeneration
+- QCoreApplication::processEvents() used during icon refresh to ensure
+  proper icon clearing before setting new icons
+- All icon loading now uses theme-aware file selection (black vs white SVGs)
+- Delete and clear icons remain red in both themes (using color replacement)
+
+## Files Modified
+- Canvas.cpp: Added zoomChanged signal emissions
+- MainWindow.cpp: Added icon refresh calls in applyTheme()
+- MainWindowWidgetConnections.cpp: Connected zoomChanged signal
+- ToolbarWidget.cpp/h: Added refreshIcons() method, updated to refresh rotate button
+- ControlPanelWidget.cpp/h: Added refreshIcons() method, removed test extraction button
+- SidePanelWidget.cpp/h: Enhanced refreshIcons() to include group buttons
+- IconManager.cpp/h: Complete overhaul for theme-aware icon loading with caching
+- MainWindowRegionOperations.cpp: Fixed theming and implemented unused parameters
+- main.cpp: Enhanced logging with file/line information
+
+## New Files
+- 17 new white icon SVG files (*_white.svg) for dark mode support
+
+This commit significantly improves the application's theme consistency and
+user experience, ensuring all UI elements properly adapt to light and dark
+modes with correct icon and text colors throughout the interface.

@@ -5,6 +5,7 @@
 #include "../../../models/DocumentState.h"
 #include "../../../models/RegionData.h"
 #include <QtCore/QObject>
+#include <QtCore/QDebug>
 #include <QtGui/QAction>
 #include <QtGui/QKeySequence>
 #include <QtWidgets/QMessageBox>
@@ -37,14 +38,31 @@ void MainWindowCanvasWiring::connectCanvasSignals(MainWindow* mainWindow,
                                                    const ChangeRegionColorCallback& changeRegionColor,
                                                    const RenameRegionCallback& renameRegion,
                                                    const InvalidateCacheCallback& invalidateCache) {
+    qDebug() << "[ZOOM DEBUG] connectCanvasSignals called";
     if (!mainWindow || !canvas || !documentState) {
+        qWarning() << "[ZOOM DEBUG] connectCanvasSignals: null pointer(s) - mainWindow:" << (void*)mainWindow << "canvas:" << (void*)canvas << "documentState:" << (void*)documentState;
         return;
     }
+    qDebug() << "[ZOOM DEBUG] All pointers valid, proceeding with connections";
     
     // Connect region creation signals
     QObject::connect(canvas, &Canvas::regionCreated, mainWindow, &MainWindow::onRegionCreated);
     QObject::connect(canvas, &Canvas::regionCreationRequested, mainWindow, &MainWindow::onRegionCreationRequested);
     QObject::connect(canvas, &Canvas::regionsDuplicated, mainWindow, &MainWindow::onRegionsDuplicated);
+    
+    // Connect zoom changed signal to update toolbar label
+    // Use string-based connection to avoid overload ambiguity with updateZoomLabel() vs updateZoomLabel(double)
+    qDebug() << "[ZOOM DEBUG] Attempting to connect zoomChanged signal...";
+    bool zoomConnected = QObject::connect(canvas, SIGNAL(zoomChanged(double)), 
+                                           mainWindow, SLOT(updateZoomLabel(double)));
+    qDebug() << "[ZOOM DEBUG] Connection result:" << zoomConnected;
+    if (!zoomConnected) {
+        qWarning() << "[ZOOM DEBUG] FAILED to connect zoomChanged signal!";
+        qWarning() << "[ZOOM DEBUG] Canvas signal index:" << canvas->metaObject()->indexOfSignal("zoomChanged(double)");
+        qWarning() << "[ZOOM DEBUG] MainWindow slot index:" << mainWindow->metaObject()->indexOfSlot("updateZoomLabel(double)");
+    } else {
+        qDebug() << "[ZOOM DEBUG] Successfully connected zoomChanged signal";
+    }
     
     // Connect undo/redo signals
     QObject::connect(canvas, &Canvas::undoRequested, mainWindow, &MainWindow::onUndo);

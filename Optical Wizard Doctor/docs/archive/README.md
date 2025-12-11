@@ -4,6 +4,31 @@ This directory contains development, planning, and historical documentation that
 
 ## Contents
 
+### Analysis & Research Documents
+- `ROTATED_RESIZE_DEFINITIVE_ANALYSIS.md` - Rotated resize analysis
+- `ANCHOR_BASED_RESIZE_SOLUTION.md` - Anchor-based resize solution
+- `RESIZE_ROTATION_FIX.md` - Resize rotation fix documentation
+- `PROBLEM_BREAKDOWN.md` - Problem breakdown analysis
+- `DEEP_ANALYSIS.md` - Deep analysis documents
+- `SOLUTION_SUMMARY.md` - Solution summaries
+- `RESEARCH_COMPLETE_BREAKDOWN.md` - Research breakdown
+- `RESIZE_BEHAVIOR_ANALYSIS.md` - Resize behavior analysis
+- `ROOT_CAUSE_ANALYSIS.md` - Root cause analysis
+- `BUG_FIXES_RESEARCH.md` - Bug fixes research
+- `BUG_INVESTIGATION.md` - Bug investigation documents
+
+### Planning Documents
+- `MODULARIZATION_COMPLETE.md` - Modularization completion report
+- `UI_MODULARIZATION_PLAN.md` - UI modularization plan
+- `UNDO_REDO_PLAN.md` - Undo/Redo planning
+- `UNDO_REDO_STATE_GAPS.md` - Undo/Redo state gaps analysis
+
+### Deployment & Distribution
+- `DMG_ISSUES.md` - DMG creation issues
+- `DISTRIBUTION.md` - Distribution documentation
+- `DEPLOYMENT_WORKFLOW.md` - Deployment workflow
+- `PRODUCTION_SUMMARY.md` - Production readiness summary (historical)
+
 ### Implementation Plans
 - `IMPLEMENTATION_PLAN/` - Detailed implementation planning documents
 - `MODULARIZATION_PLAN.md` - Modularization planning

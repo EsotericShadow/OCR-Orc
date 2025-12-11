@@ -107,6 +107,15 @@ public:
     QString generateRegionName(DocumentState* documentState) const;
     
     /**
+     * @brief Show dialog to get region name when creating a new region
+     * @param parentWidget Parent widget for dialog
+     * @param documentState Document state to generate default name (used if callback not provided)
+     * @param generateRegionNameCallback Optional callback to generate default name
+     * @return Region name if accepted, empty string if cancelled
+     */
+    QString showCreateRegionNameDialog(QWidget* parentWidget, DocumentState* documentState, const GenerateRegionNameCallback& generateRegionNameCallback = nullptr) const;
+    
+    /**
      * @brief Auto-increment region name in control panel
      * @param controlPanelWidget Control panel widget
      * @param documentState Document state to check for existing names

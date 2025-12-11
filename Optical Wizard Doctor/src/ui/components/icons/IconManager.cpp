@@ -1,4 +1,5 @@
 #include "IconManager.h"
+#include "../../ThemeManager.h"
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QStyle>
 #include <QtGui/QPixmap>
@@ -11,6 +12,8 @@
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QTextStream>
+#include <QtCore/QRegularExpression>
+#include <QtCore/QMap>
 #if OCR_ORC_DEBUG_ENABLED
 #include <QtCore/QDebug>
 #endif
@@ -27,139 +30,123 @@ IconManager::IconManager()
 {
 }
 
+void IconManager::clearIconCache() {
+    // Clear the icon cache to force regeneration when theme changes
+    iconCache.clear();
+}
+
 QIcon IconManager::getIcon(const QString& iconName) const {
     QStyle* style = QApplication::style();
     if (!style) {
         return QIcon();
     }
     
-    // Map icon names to Qt standard icons
-    if (iconName == ICON_OPEN) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/load_pdf.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
+    // Use ThemeManager to determine the actual theme (not palette, which may not reflect stylesheet changes)
+    ThemeManager& themeManager = ThemeManager::instance();
+    Theme effectiveTheme = themeManager.getEffectiveTheme();
+    bool isDarkMode = (effectiveTheme == Theme::Dark);
+    
+    // Debug: log what theme we're using
+    #if OCR_ORC_DEBUG_ENABLED
+    qDebug() << "[ICON DEBUG] getIcon:" << iconName << "effectiveTheme:" << (isDarkMode ? "Dark" : "Light");
+    #endif
+    
+    // Helper function to get icon file path based on theme
+    // For light mode: use original black SVGs
+    // For dark mode: use white versions (_white.svg)
+    auto getIconPath = [isDarkMode](const QString& iconFile) -> QString {
+        if (isDarkMode) {
+            // Use white version for dark mode
+            QString baseName = iconFile;
+            if (baseName.endsWith(".svg")) {
+                baseName.chop(4); // Remove .svg
+            }
+            return QString("resources/icons/%1_white.svg").arg(baseName);
+        } else {
+            // Use original black version for light mode
+            return QString("resources/icons/%1").arg(iconFile);
         }
+    };
+    
+    // Map icon names to icon files - use separate files for light/dark themes
+    // For delete/clear, always use red (use original file, not white version)
+    if (iconName == ICON_OPEN) {
+        QIcon svgIcon = loadSvgIcon(getIconPath("load_pdf.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_DirOpenIcon);
     } else if (iconName == ICON_SAVE || iconName == ICON_EXPORT) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/export.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("export.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_DialogSaveButton);
     } else if (iconName == ICON_IMPORT) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/load_coordinates.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("load_coordinates.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_FileDialogStart);
     } else if (iconName == ICON_UNDO) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/undo.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("undo.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_ArrowBack);
     } else if (iconName == ICON_REDO) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/redo.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("redo.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_ArrowForward);
     } else if (iconName == ICON_ZOOM_IN) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/zoom_in.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("zoom_in.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_FileDialogDetailedView);
     } else if (iconName == ICON_ZOOM_OUT) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/zoom_out.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("zoom_out.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_FileDialogListView);
     } else if (iconName == ICON_ZOOM_RESET) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/zoom_reset.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("zoom_reset.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_FileDialogBack);
     } else if (iconName == ICON_CREATE) {
-        // Try to load custom SVG icon first
-        QIcon svgIcon = loadSvgIcon("resources/icons/create.svg");
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("create.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_FileDialogNewFolder);
     } else if (iconName == ICON_ADD) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/add_to_group.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("add_to_group.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_FileDialogNewFolder);
     } else if (iconName == ICON_SELECT || iconName == "select_move") {
-        // Try to load custom SVG icon first
-        QIcon svgIcon = loadSvgIcon("resources/icons/select_move.svg");
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("select_move.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_ArrowDown);
     } else if (iconName == ICON_GROUP) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/group.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("group.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_DirIcon);
     } else if (iconName == ICON_UNGROUP) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/ungroup.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("ungroup.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_DirClosedIcon);
     } else if (iconName == ICON_DELETE) {
-        // Try to load custom SVG icon first (red version for delete buttons)
+        // Always keep delete red - use original file (not white version) and colorize red
         QIcon svgIcon = loadSvgIconWithColor("resources/icons/delete_group.svg", Qt::red);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_TrashIcon);
     } else if (iconName == ICON_REMOVE) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/remove_from_group.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("remove_from_group.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_TrashIcon);
     } else if (iconName == ICON_EDIT) {
-        // Try to load custom SVG icon first (white version for buttons)
-        QIcon svgIcon = loadSvgIconWithColor("resources/icons/edit.svg", Qt::white);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        QIcon svgIcon = loadSvgIcon(getIconPath("edit.svg"));
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_FileDialogInfoView);
     } else if (iconName == ICON_CLEAR) {
-        // Try to load custom SVG icon first (red version for delete/clear buttons)
+        // Always keep clear red - use original file (not white version) and colorize red
         QIcon svgIcon = loadSvgIconWithColor("resources/icons/clear.svg", Qt::red);
-        if (!svgIcon.isNull()) {
-            return svgIcon;
-        }
+        if (!svgIcon.isNull()) return svgIcon;
         return createStandardIcon(QStyle::SP_DialogResetButton);
     } else if (iconName == ICON_HELP) {
         // Theme-aware help icon: white on dark mode, black on light mode
-        QPalette palette = QApplication::palette();
-        QColor baseColor = palette.color(QPalette::Base);
-        // Check if we're in dark mode (base color is dark)
-        bool isDarkMode = baseColor.lightness() < 128;
+        // Use ThemeManager to determine theme (same as other icons)
         QColor iconColor = isDarkMode ? Qt::white : Qt::black;
+        
+        // Create a simple "?" icon with theme-appropriate color
+        return createTextIcon("?", iconColor.name());
         
         // Create a simple "?" icon with theme-appropriate color
         return createTextIcon("?", iconColor.name());
@@ -304,6 +291,21 @@ QIcon IconManager::loadSvgIcon(const QString& svgPath) const {
 }
 
 QIcon IconManager::loadSvgIconWithColor(const QString& svgPath, const QColor& color) const {
+    // Use a cache key that includes the color to prevent wrong caching
+    // This ensures black and white versions are treated as different icons
+    QString cacheKey = QString("%1_%2").arg(svgPath, color.name());
+    
+    // Check cache first
+    if (iconCache.contains(cacheKey)) {
+        #if OCR_ORC_DEBUG_ENABLED
+        qDebug() << "[ICON DEBUG] Using cached icon:" << cacheKey;
+        #endif
+        return iconCache[cacheKey];
+    }
+    
+    // Note: For most icons, we now use separate files (black/white versions)
+    // This function is still used for delete/clear icons which need red coloring
+    
     // Try multiple paths: absolute, relative to current directory, relative to executable
     QStringList searchPaths;
     
@@ -350,25 +352,102 @@ QIcon IconManager::loadSvgIconWithColor(const QString& svgPath, const QColor& co
                 QString svgContent = in.readAll();
                 file.close();
                 
-                // Replace black color with desired color
+                // Replace ALL color references with desired color (black or white based on theme)
                 QString colorHex = color.name();
+                
+                #if OCR_ORC_DEBUG_ENABLED
+                qDebug() << "[ICON DEBUG] Replacing colors in SVG:" << svgPath << "with color:" << colorHex;
+                QString originalContent = svgContent.left(300); // First 300 chars for debug
+                int originalBlackCount = svgContent.count("#000000", Qt::CaseInsensitive);
+                qDebug() << "[ICON DEBUG] Found" << originalBlackCount << "instances of #000000 in original";
+                #endif
+                
+                // AGGRESSIVE replacement: Replace ALL instances of black/white colors
+                // Replace in all possible formats and locations
+                
+                // 1. Standalone hex colors anywhere in the file (do this FIRST, most common)
                 svgContent.replace("#000000", colorHex, Qt::CaseInsensitive);
-                svgContent.replace("color=\"#000000\"", QString("color=\"%1\"").arg(colorHex), Qt::CaseInsensitive);
-                svgContent.replace("stroke=\"#000000\"", QString("stroke=\"%1\"").arg(colorHex), Qt::CaseInsensitive);
+                svgContent.replace("#000", colorHex, Qt::CaseInsensitive);
+                svgContent.replace("#ffffff", colorHex, Qt::CaseInsensitive);
+                svgContent.replace("#fff", colorHex, Qt::CaseInsensitive);
+                
+                #if OCR_ORC_DEBUG_ENABLED
+                int afterBlackCount = svgContent.count("#000000", Qt::CaseInsensitive);
+                int newColorCount = svgContent.count(colorHex, Qt::CaseInsensitive);
+                qDebug() << "[ICON DEBUG] After replacement - #000000 count:" << afterBlackCount << "new color count:" << newColorCount;
+                #endif
+                
+                // 2. In stroke attributes (with quotes)
+                svgContent.replace(QRegularExpression("stroke=\"#000000\"", QRegularExpression::CaseInsensitiveOption), QString("stroke=\"%1\"").arg(colorHex));
+                svgContent.replace(QRegularExpression("stroke=\"#000\"", QRegularExpression::CaseInsensitiveOption), QString("stroke=\"%1\"").arg(colorHex));
+                svgContent.replace(QRegularExpression("stroke=\"#ffffff\"", QRegularExpression::CaseInsensitiveOption), QString("stroke=\"%1\"").arg(colorHex));
+                svgContent.replace(QRegularExpression("stroke=\"#fff\"", QRegularExpression::CaseInsensitiveOption), QString("stroke=\"%1\"").arg(colorHex));
+                svgContent.replace("stroke=\"black\"", QString("stroke=\"%1\"").arg(colorHex), Qt::CaseInsensitive);
+                svgContent.replace("stroke=\"white\"", QString("stroke=\"%1\"").arg(colorHex), Qt::CaseInsensitive);
+                
+                // 3. In fill attributes
+                svgContent.replace(QRegularExpression("fill=\"#000000\"", QRegularExpression::CaseInsensitiveOption), QString("fill=\"%1\"").arg(colorHex));
+                svgContent.replace(QRegularExpression("fill=\"#000\"", QRegularExpression::CaseInsensitiveOption), QString("fill=\"%1\"").arg(colorHex));
+                svgContent.replace(QRegularExpression("fill=\"#ffffff\"", QRegularExpression::CaseInsensitiveOption), QString("fill=\"%1\"").arg(colorHex));
+                svgContent.replace(QRegularExpression("fill=\"#fff\"", QRegularExpression::CaseInsensitiveOption), QString("fill=\"%1\"").arg(colorHex));
+                svgContent.replace("fill=\"black\"", QString("fill=\"%1\"").arg(colorHex), Qt::CaseInsensitive);
+                svgContent.replace("fill=\"white\"", QString("fill=\"%1\"").arg(colorHex), Qt::CaseInsensitive);
+                
+                // 4. In color attribute (root SVG element)
+                svgContent.replace(QRegularExpression("color=\"#000000\"", QRegularExpression::CaseInsensitiveOption), QString("color=\"%1\"").arg(colorHex));
+                svgContent.replace(QRegularExpression("color=\"#000\"", QRegularExpression::CaseInsensitiveOption), QString("color=\"%1\"").arg(colorHex));
+                svgContent.replace(QRegularExpression("color=\"#ffffff\"", QRegularExpression::CaseInsensitiveOption), QString("color=\"%1\"").arg(colorHex));
+                svgContent.replace(QRegularExpression("color=\"#fff\"", QRegularExpression::CaseInsensitiveOption), QString("color=\"%1\"").arg(colorHex));
+                svgContent.replace("color=\"black\"", QString("color=\"%1\"").arg(colorHex), Qt::CaseInsensitive);
+                svgContent.replace("color=\"white\"", QString("color=\"%1\"").arg(colorHex), Qt::CaseInsensitive);
+                
+                #if OCR_ORC_DEBUG_ENABLED
+                QString modifiedContent = svgContent.left(300);
+                qDebug() << "[ICON DEBUG] Original SVG start:" << originalContent;
+                qDebug() << "[ICON DEBUG] Modified SVG start:" << modifiedContent;
+                // Verify replacement worked
+                if (svgContent.contains("#000000", Qt::CaseInsensitive)) {
+                    qDebug() << "[ICON DEBUG] WARNING: Still contains #000000 after replacement!";
+                }
+                if (svgContent.contains(colorHex)) {
+                    qDebug() << "[ICON DEBUG] SUCCESS: SVG now contains target color" << colorHex;
+                }
+                #endif
                 
                 // Render SVG with modified color
                 QSvgRenderer renderer(svgContent.toUtf8());
                 if (renderer.isValid()) {
-                    QPixmap pixmap(iconSize, iconSize);
-                    pixmap.fill(Qt::transparent);
+                    // Create icon with multiple pixmap sizes to avoid caching issues
+                    QIcon icon;
                     
-                    QPainter painter(&pixmap);
-                    painter.setRenderHint(QPainter::Antialiasing);
-                    renderer.render(&painter);
-                    painter.end();
+                    // Render at different sizes to ensure proper scaling
+                    QList<int> sizes = {iconSize, iconSize * 2, iconSize / 2};
+                    for (int size : sizes) {
+                        if (size > 0) {
+                            QPixmap pixmap(size, size);
+                            pixmap.fill(Qt::transparent);
+                            
+                            QPainter painter(&pixmap);
+                            painter.setRenderHint(QPainter::Antialiasing);
+                            renderer.render(&painter);
+                            painter.end();
+                            
+                            // Add pixmap with color in the cache key to prevent wrong caching
+                            icon.addPixmap(pixmap, QIcon::Normal, QIcon::Off);
+                        }
+                    }
                     
-                    QIcon icon(pixmap);
+                    #if OCR_ORC_DEBUG_ENABLED
+                    qDebug() << "[ICON DEBUG] Created icon with color:" << colorHex << "size:" << iconSize;
+                    #endif
+                    
+                    // Cache the icon with color-specific key (iconCache is mutable)
+                    iconCache[cacheKey] = icon;
                     return icon;
+                } else {
+                    #if OCR_ORC_DEBUG_ENABLED
+                    qDebug() << "[ICON DEBUG] SVG renderer invalid after color replacement!";
+                    #endif
                 }
             }
         }

@@ -103,6 +103,13 @@ protected:
      */
     void dropEvent(QDropEvent *event) override;
 
+public slots:
+    /**
+     * @brief Update the zoom percentage label with provided zoom level
+     * @param zoomLevel The zoom level (0.0-1.0+)
+     */
+    void updateZoomLabel(double zoomLevel);
+    
 private slots:
     /**
      * @brief Handle File > Exit action
@@ -286,7 +293,7 @@ private slots:
     void autoIncrementRegionName();
     
     /**
-     * @brief Update the zoom percentage label
+     * @brief Update the zoom percentage label (reads from canvas)
      */
     void updateZoomLabel();
     

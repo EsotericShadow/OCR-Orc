@@ -7,6 +7,8 @@
 #include <QtCore/QDir>
 #include <QtCore/QFileInfo>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QEventLoop>
+#include <QtCore/QDebug>
 
 namespace ocr_orc {
 
@@ -173,7 +175,7 @@ void ToolbarWidget::setupZoom(QHBoxLayout* layout) {
     layout->addWidget(zoomInButton);
     
     zoomResetButton = new QPushButton("100%", this);
-    zoomResetButton->setFixedSize(50, 32);
+    zoomResetButton->setFixedSize(60, 32);
     zoomResetButton->setToolTip("Reset zoom to 100% (Shortcut: 0)");
     zoomResetButton->setStyleSheet(
         "QPushButton {"
@@ -183,6 +185,7 @@ void ToolbarWidget::setupZoom(QHBoxLayout* layout) {
         "    color: #000000;"
         "    font-size: 11px;"
         "    font-weight: bold;"
+        "    padding: 6px 12px;"
         "}"
         "QPushButton:hover {"
         "    background-color: #f0f0f0;"
@@ -329,13 +332,65 @@ void ToolbarWidget::setupUndoRedo(QHBoxLayout* layout) {
 }
 
 void ToolbarWidget::updateZoomLabel(double zoomLevel) {
+    qDebug() << "[ZOOM DEBUG] ToolbarWidget::updateZoomLabel(" << zoomLevel << ") called";
     int percentage = static_cast<int>(zoomLevel * 100.0);
-    zoomLabel->setText(QString("%1%").arg(percentage));
+    QString newText = QString("%1%").arg(percentage);
+    qDebug() << "[ZOOM DEBUG] Setting zoom label text to:" << newText;
+    if (zoomLabel) {
+        zoomLabel->setText(newText);
+        qDebug() << "[ZOOM DEBUG] Zoom label text updated successfully";
+    } else {
+        qDebug() << "[ZOOM DEBUG] zoomLabel is null!";
+    }
 }
 
 void ToolbarWidget::updateUndoRedoButtons(bool canUndo, bool canRedo) {
     undoButton->setEnabled(canUndo);
     redoButton->setEnabled(canRedo);
+}
+
+void ToolbarWidget::refreshIcons() {
+    // Clear icon cache first to force regeneration with new colors
+    IconManager::instance().clearIconCache();
+    
+    // Refresh all icons to pick up theme changes
+    if (zoomOutButton) {
+        zoomOutButton->setIcon(QIcon()); // Clear first to force refresh
+        QCoreApplication::processEvents(); // Process events to clear icon
+        zoomOutButton->setIcon(IconManager::instance().getIcon("zoom_out"));
+    }
+    if (zoomInButton) {
+        zoomInButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        zoomInButton->setIcon(IconManager::instance().getIcon("zoom_in"));
+    }
+    if (rotateButton) {
+        rotateButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        rotateButton->setIcon(IconManager::instance().getIcon("zoom_reset"));
+    }
+    if (groupButton) {
+        groupButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        groupButton->setIcon(IconManager::instance().getIcon("group"));
+    }
+    if (ungroupButton) {
+        ungroupButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        ungroupButton->setIcon(IconManager::instance().getIcon("ungroup"));
+    }
+    if (undoButton) {
+        undoButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        undoButton->setIcon(IconManager::instance().getIcon("undo"));
+    }
+    if (redoButton) {
+        redoButton->setIcon(QIcon());
+        QCoreApplication::processEvents();
+        redoButton->setIcon(IconManager::instance().getIcon("redo"));
+    }
+    // Force widget update
+    update();
 }
 
 } // namespace ocr_orc

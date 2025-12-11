@@ -5,6 +5,7 @@
 #include <QtGui/QColor>
 #include <QtWidgets/QStyle>
 #include <QtCore/QString>
+#include <QtCore/QMap>
 
 namespace ocr_orc {
 
@@ -55,6 +56,11 @@ public:
      * @return QIcon from SVG with specified color, or empty icon if file not found
      */
     QIcon loadSvgIconWithColor(const QString& svgPath, const QColor& color) const;
+    
+    /**
+     * @brief Clear icon cache - call when theme changes to force icon regeneration
+     */
+    void clearIconCache();
 
 private:
     IconManager();
@@ -86,6 +92,7 @@ private:
     static constexpr const char* ICON_REMOVE = "remove";
     
     int iconSize;
+    mutable QMap<QString, QIcon> iconCache; // Cache icons by path+color key (mutable for const methods)
     
     /**
      * @brief Create icon from standard pixmap with fallback
