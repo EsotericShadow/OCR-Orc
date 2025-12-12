@@ -26,6 +26,7 @@
 #include <QtGui/QDropEvent>
 #include "../models/DocumentState.h"
 #include "../utils/RegionDetector.h"
+#include "components/dialogs/MagicDetectParamsDialog.h"
 #include "canvas/Canvas.h"
 #include "components/widgets/ToolbarWidget.h"
 #include "components/widgets/ControlPanelWidget.h"
@@ -421,6 +422,7 @@ private:
     ocr_orc::DetectionWorker* detectionWorker;
     bool isDetecting;
     DetectionResult* currentDetectionResult;  // Store result for dialog access
+    DetectionParameters currentDetectionParams;  // Store detection parameters
     
     // UI Components - Layout
     QWidget* centralWidget;

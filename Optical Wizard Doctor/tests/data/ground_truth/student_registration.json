@@ -1,0 +1,122 @@
+{
+  "formId": "student_registration",
+  "imagePath": "student_registration.pdf",
+  "pdfPath": "student_registration.pdf",
+  "documentType": "government",
+  "expectedRegions": [
+    {
+      "name": "first_name",
+      "normalizedCoords": {
+        "x1": 0.15,
+        "y1": 0.25,
+        "x2": 0.45,
+        "y2": 0.30
+      },
+      "type": "text",
+      "group": "personal_info",
+      "confidence": 1.0
+    },
+    {
+      "name": "last_name",
+      "normalizedCoords": {
+        "x1": 0.50,
+        "y1": 0.25,
+        "x2": 0.80,
+        "y2": 0.30
+      },
+      "type": "text",
+      "group": "personal_info",
+      "confidence": 1.0
+    },
+    {
+      "name": "date_of_birth",
+      "normalizedCoords": {
+        "x1": 0.15,
+        "y1": 0.35,
+        "x2": 0.45,
+        "y2": 0.40
+      },
+      "type": "text",
+      "group": "personal_info",
+      "confidence": 1.0
+    },
+    {
+      "name": "address",
+      "normalizedCoords": {
+        "x1": 0.15,
+        "y1": 0.45,
+        "x2": 0.80,
+        "y2": 0.50
+      },
+      "type": "text",
+      "group": "contact_info",
+      "confidence": 1.0
+    },
+    {
+      "name": "city",
+      "normalizedCoords": {
+        "x1": 0.15,
+        "y1": 0.55,
+        "x2": 0.45,
+        "y2": 0.60
+      },
+      "type": "text",
+      "group": "contact_info",
+      "confidence": 1.0
+    },
+    {
+      "name": "state",
+      "normalizedCoords": {
+        "x1": 0.50,
+        "y1": 0.55,
+        "x2": 0.65,
+        "y2": 0.60
+      },
+      "type": "text",
+      "group": "contact_info",
+      "confidence": 1.0
+    },
+    {
+      "name": "zip_code",
+      "normalizedCoords": {
+        "x1": 0.70,
+        "y1": 0.55,
+        "x2": 0.85,
+        "y2": 0.60
+      },
+      "type": "text",
+      "group": "contact_info",
+      "confidence": 1.0
+    },
+    {
+      "name": "phone_number",
+      "normalizedCoords": {
+        "x1": 0.15,
+        "y1": 0.65,
+        "x2": 0.45,
+        "y2": 0.70
+      },
+      "type": "text",
+      "group": "contact_info",
+      "confidence": 1.0
+    },
+    {
+      "name": "email",
+      "normalizedCoords": {
+        "x1": 0.50,
+        "y1": 0.65,
+        "x2": 0.85,
+        "y2": 0.70
+      },
+      "type": "text",
+      "group": "contact_info",
+      "confidence": 1.0
+    }
+  ],
+  "metadata": {
+    "totalFields": 9,
+    "hasCheckboxes": false,
+    "hasGrids": false,
+    "description": "Student registration form with personal and contact information fields"
+  }
+}

@@ -101,7 +101,7 @@ if(APPLE)
 endif()
 
 # Try to find Qt6 (will use Qt6_DIR if set, or search system paths)
-find_package(Qt6 QUIET COMPONENTS Core Widgets Svg DBus)
+find_package(Qt6 QUIET COMPONENTS Core Widgets Svg DBus Concurrent)
 
 if(NOT Qt6_FOUND)
     message(FATAL_ERROR "
@@ -207,6 +207,7 @@ target_link_libraries(ocr-orc
     Qt6::Widgets
     Qt6::Svg
     Qt6::DBus
+    Qt6::Concurrent
     ${POPPLER_CPP_LIBRARIES}
     ${TESSERACT_LIBRARIES}
     ${OpenCV_LIBS}

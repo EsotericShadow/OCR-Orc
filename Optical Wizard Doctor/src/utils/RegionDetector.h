@@ -5,9 +5,11 @@
 #include <QtCore/QString>
 #include <QtCore/QList>
 #include <QtCore/QMap>
+#include <QtCore/QPair>
 #include <opencv2/opencv.hpp>
 #include "../core/CoordinateSystem.h"
 #include "SpatialClusterer.h"
+#include "DocumentTypeClassifier.h"
 
 namespace ocr_orc {
 
@@ -16,6 +18,12 @@ struct DetectedRectangle;  // Defined in RectangleDetector.h
 
 // Forward declare OCRTextRegion - we'll include the header in .cpp
 struct OCRTextRegion;
+
+// Forward declare AdaptiveThresholdManager (class, not enum, so forward declaration is OK)
+class AdaptiveThresholdManager;
+
+// Forward declare DetectionParameters - defined in MagicDetectParamsDialog.h
+struct DetectionParameters;
 
 /**
  * @brief Detected region from automatic detection
@@ -99,17 +107,33 @@ public:
      * @brief Detect regions in an image
      * @param image Source image (QImage)
      * @param method Detection method: "auto", "grid", "contour", "hybrid", "ocr-first"
+     * @param params Optional detection parameters (if not provided, uses defaults)
      * @return DetectionResult with detected regions and statistics
      */
-    DetectionResult detectRegions(const QImage& image, const QString& method = "auto");
+    DetectionResult detectRegions(const QImage& image, const QString& method, 
+                                  const DetectionParameters& params);
     
     /**
      * @brief Detect regions using OCR-first approach
      * @param image Source image (QImage)
      * @param method Detection method (default: "ocr-first")
+     * @param params Detection parameters
      * @return DetectionResult with detected regions and statistics
      */
-    DetectionResult detectRegionsOCRFirst(const QImage& image, const QString& method = "ocr-first");
+    DetectionResult detectRegionsOCRFirst(const QImage& image, const QString& method,
+                                          const DetectionParameters& params);
+    
+    /**
+     * @brief Enable/disable document preprocessing
+     * @param enable True to enable preprocessing (deskew, denoise, shadow removal, contrast)
+     */
+    void setPreprocessingEnabled(bool enable) { enablePreprocessing = enable; }
+    
+    /**
+     * @brief Get preprocessing enabled state
+     * @return True if preprocessing is enabled
+     */
+    bool isPreprocessingEnabled() const { return enablePreprocessing; }
     
     /**
      * @brief Match and merge results from OCR-first and rectangle detection pipelines
@@ -121,13 +145,52 @@ public:
     DetectionResult matchAndMergePipelines(const QList<cv::Rect>& ocrRegions,
                                           const QList<DetectedRectangle>& rectangleRegions,
                                           const QImage& image,
-                                          const QList<OCRTextRegion>& ocrTextRegions);
+                                          const QList<OCRTextRegion>& ocrTextRegions,
+                                          const DetectionParameters& params);
+    
+    /**
+     * @brief Handle multi-label fields (one rectangle matching multiple OCR regions)
+     * @param rectangleToOcrMatches Map of rectangle to matching OCR regions
+     * @param ocrTextRegions All OCR text regions for semantic validation
+     * @return List of detected regions for multi-label fields
+     */
+    QList<DetectedRegion> handleMultiLabelFields(
+        const QMap<cv::Rect, QList<cv::Rect>>& rectangleToOcrMatches,
+        const QList<OCRTextRegion>& ocrTextRegions);
     
     // Parameter setters
     void setMinCellSize(int width, int height);
     void setMaxCellSize(int width, int height);
     void setLineDetectionThreshold(int threshold);
     void setContourMinArea(int area);
+    
+    /**
+     * @brief Consensus matching mode
+     */
+    enum ConsensusMode {
+        STRICT_CONSENSUS,   // Only include consensus matches (IoU >0.6)
+        LENIENT_CONSENSUS   // Include high-confidence OCR-only if no rectangles nearby
+    };
+    
+    /**
+     * @brief Set consensus matching mode
+     * @param mode Consensus mode
+     */
+    void setConsensusMode(ConsensusMode mode) { consensusMode = mode; }
+    
+    /**
+     * @brief Get current consensus mode
+     * @return Consensus mode
+     */
+    ConsensusMode getConsensusMode() const { return consensusMode; }
+    
+    /**
+     * @brief Set instrumentation for tracking pipeline execution
+     * @param instrumentation Instrumentation instance (can be nullptr to disable)
+     */
+    void setInstrumentation(void* instrumentation) {
+        this->instrumentation = instrumentation;
+    }
     
 private:
     // Detection methods
@@ -160,6 +223,12 @@ private:
     int maxCellHeight;
     int lineThreshold;        // Hough transform threshold
     int contourMinArea;      // Minimum contour area
+    ConsensusMode consensusMode;  // Consensus matching mode (default: LENIENT_CONSENSUS)
+    bool enablePreprocessing;    // Enable document preprocessing (default: false)
+    
+    // Instrumentation (optional, for testing and analysis)
+    // Using void* to avoid including test headers in production code
+    void* instrumentation;
 };
 
 } // namespace ocr_orc

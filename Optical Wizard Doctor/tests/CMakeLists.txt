@@ -256,6 +256,59 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test_undo_redo.cpp)
     )
     add_test(NAME UndoRedoTests COMMAND test_undo_redo)
 
+# Magic Detection Test Suite
+add_executable(test_magic_detection_suite
+    test_magic_detection_suite.cpp
+    MagicDetectionTestRunner.cpp
+    MagicDetectionTestRunner.h
+    TestDataManager.cpp
+    TestDataManager.h
+    instrumentation/PipelineInstrumentation.cpp
+    instrumentation/PipelineInstrumentation.h
+    metrics/MetricsCalculator.cpp
+    metrics/MetricsCalculator.h
+    reporting/TestReporter.cpp
+    reporting/TestReporter.h
+    ${CMAKE_SOURCE_DIR}/src/utils/RegionDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/OcrTextExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/TextRegionRefiner.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/FormFieldDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/RectangleDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/DocumentTypeClassifier.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/AdaptiveThresholdManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/DocumentPreprocessor.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/FormStructureAnalyzer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/DetectionCache.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/CheckboxDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/PatternAnalyzer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/GroupInferencer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/ConfidenceCalculator.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/TypeInferencer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/SpatialClusterer.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/ImageConverter.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/PdfLoader.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CoordinateSystem.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/patterns/PostalCodePatternDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/patterns/NameFieldPatternDetector.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/patterns/NumberSequencePatternDetector.cpp
+)
+# Define OCR_ORC_TEST_BUILD to enable instrumentation in RegionDetector
+target_compile_definitions(test_magic_detection_suite PRIVATE OCR_ORC_TEST_BUILD)
+target_link_libraries(test_magic_detection_suite
+    Qt6::Core
+    Qt6::Widgets
+    Qt6::Concurrent
+    ${POPPLER_CPP_LIBRARIES}
+    ${TESSERACT_LIBRARIES}
+    ${OpenCV_LIBS}
+)
+# Add library directories for Tesseract (macOS Homebrew)
+if(APPLE)
+    target_link_directories(test_magic_detection_suite PRIVATE ${TESSERACT_LIBRARY_DIRS})
+    target_include_directories(test_magic_detection_suite PRIVATE ${TESSERACT_INCLUDE_DIRS})
+endif()
+add_test(NAME MagicDetectionTestSuite COMMAND test_magic_detection_suite)
+
 # MainWindow Integration Tests
 add_executable(test_mainwindow_integration
     test_mainwindow_integration.cpp

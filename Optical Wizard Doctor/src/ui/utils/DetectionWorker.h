@@ -3,8 +3,11 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QThread>
+#include <QtCore/QTimer>
+#include <QtCore/QElapsedTimer>
 #include <QtGui/QImage>
 #include "../../utils/RegionDetector.h"
+#include "../components/dialogs/MagicDetectParamsDialog.h"
 
 namespace ocr_orc {
 
@@ -22,6 +25,12 @@ public:
     ~DetectionWorker() = default;
 
 public slots:
+    /**
+     * @brief Set detection parameters (called before detectRegions)
+     * @param params Detection parameters to use
+     */
+    void setDetectionParameters(const DetectionParameters& params);
+    
     /**
      * @brief Detect regions in an image (runs in worker thread)
      * @param image Source image to analyze
@@ -49,8 +58,18 @@ signals:
      */
     void detectionError(const QString& error);
 
+private slots:
+    /**
+     * @brief Periodic update during long OCR operations
+     */
+    void onProgressUpdate();
+
 private:
     RegionDetector* detector; // Created lazily in worker thread
+    QTimer* progressTimer;    // Timer for periodic progress updates during OCR
+    QElapsedTimer* ocrTimer;  // Timer to track OCR elapsed time
+    int progressCounter;      // Counter for progress updates (20-80%)
+    DetectionParameters detectionParams; // Parameters for current detection
 };
 
 } // namespace ocr_orc

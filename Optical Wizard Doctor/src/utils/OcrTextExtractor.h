@@ -21,8 +21,9 @@ struct OCRTextRegion {
     int blockId;               // OCR block/paragraph ID
     int lineId;                // OCR line ID within block
     int wordId;                // Word ID within line
+    bool isLowConfidence;      // True if confidence below threshold (for secondary validation)
     
-    OCRTextRegion() : confidence(0.0), typeHint("unknown"), blockId(0), lineId(0), wordId(0) {}
+    OCRTextRegion() : confidence(0.0), typeHint("unknown"), blockId(0), lineId(0), wordId(0), isLowConfidence(false) {}
 };
 
 /**
@@ -42,6 +43,25 @@ public:
      * @return List of OCR text regions with bounding boxes and confidence
      */
     QList<OCRTextRegion> extractTextRegions(const QImage& image);
+    
+    /**
+     * @brief Extract text regions using multiple PSM modes and return best result
+     * @param image Source image to process
+     * @return List of OCR text regions with highest average confidence
+     */
+    QList<OCRTextRegion> extractTextRegionsWithMultiplePSM(const QImage& image);
+    
+    /**
+     * @brief Set minimum OCR confidence threshold
+     * @param confidence Minimum confidence (0.0-100.0)
+     */
+    void setConfidenceThreshold(double confidence) { minConfidence = confidence; }
+    
+    /**
+     * @brief Get current confidence threshold
+     * @return Minimum confidence threshold
+     */
+    double getConfidenceThreshold() const { return minConfidence; }
     
     /**
      * @brief Filter regions by minimum confidence

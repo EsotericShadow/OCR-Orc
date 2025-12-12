@@ -4,6 +4,7 @@
 #include "OcrTextExtractor.h"
 #include <opencv2/opencv.hpp>
 #include <QtCore/QString>
+#include <QtCore/QList>
 
 namespace ocr_orc {
 
@@ -40,6 +41,13 @@ public:
     CheckboxDetection detectCheckbox(const OCRTextRegion& textRegion, const cv::Mat& image);
     
     /**
+     * @brief Detect all standalone checkboxes in the entire image
+     * @param image Source image
+     * @return List of all detected checkboxes (standalone, not tied to text)
+     */
+    QList<CheckboxDetection> detectAllCheckboxes(const cv::Mat& image);
+    
+    /**
      * @brief Set checkbox size range
      * @param minSize Minimum checkbox size in pixels
      * @param maxSize Maximum checkbox size in pixels
@@ -54,6 +62,24 @@ public:
      * @param threshold Fill percentage threshold (0.0-1.0)
      */
     void setFillThreshold(double threshold) { fillThreshold = threshold; }
+    
+    /**
+     * @brief Set aspect ratio range for checkbox detection
+     * @param minRatio Minimum aspect ratio (width/height)
+     * @param maxRatio Maximum aspect ratio (width/height)
+     */
+    void setAspectRatioRange(double minRatio, double maxRatio) {
+        minAspectRatio = minRatio;
+        maxAspectRatio = maxRatio;
+    }
+    
+    /**
+     * @brief Set minimum rectangularity threshold
+     * @param threshold Minimum rectangularity (0.0-1.0, 1.0 = perfect rectangle)
+     */
+    void setRectangularityThreshold(double threshold) {
+        minRectangularity = threshold;
+    }
 
 private:
     /**
@@ -81,6 +107,14 @@ private:
     bool isCheckboxShape(const cv::Rect& rect, double aspectRatio);
     
     /**
+     * @brief Validate that a contour has 4 corners at approximately 90 degrees
+     * @param contour Contour to validate
+     * @param angleTolerance Tolerance for 90-degree angles in degrees (default: 15)
+     * @return True if contour has 4 corners with approximately 90-degree angles
+     */
+    bool hasFourCorners(const std::vector<cv::Point>& contour, double angleTolerance = 15.0);
+    
+    /**
      * @brief Detect checkbox state (checked/unchecked)
      * @param checkboxROI Checkbox region of interest
      * @return True if checked, false if unchecked
@@ -95,9 +129,12 @@ private:
      */
     QString determinePlacement(const cv::Rect& checkbox, const cv::Rect& text);
     
-    int minCheckboxSize;      // Minimum checkbox size (default: 20)
-    int maxCheckboxSize;      // Maximum checkbox size (default: 50)
-    double fillThreshold;     // Fill percentage threshold for checked (default: 0.2-0.3)
+    int minCheckboxSize;      // Minimum checkbox size (default: 10)
+    int maxCheckboxSize;      // Maximum checkbox size (default: 60)
+    double fillThreshold;     // Fill percentage threshold for checked (default: 0.25)
+    double minAspectRatio;     // Minimum aspect ratio (default: 0.6)
+    double maxAspectRatio;     // Maximum aspect ratio (default: 1.6)
+    double minRectangularity; // Minimum rectangularity (default: 0.5)
 };
 
 } // namespace ocr_orc

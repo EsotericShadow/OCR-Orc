@@ -13,14 +13,30 @@
 #include "FormFieldDetector.h"
 #include "ConfidenceCalculator.h"
 #include "RectangleDetector.h"
+#include "DocumentTypeClassifier.h"
+#include "AdaptiveThresholdManager.h"
+#include "DocumentPreprocessor.h"
+#include "FormStructureAnalyzer.h"
+#include "DetectionCache.h"
 #include "../core/CoordinateSystem.h"
+#include "../ui/components/dialogs/MagicDetectParamsDialog.h"
 #include <QtGui/QImage>
+#include <QtCore/QFuture>
+#include <QtCore/QVariantMap>
+#include <QtCore/QElapsedTimer>
+#include <QtConcurrent/QtConcurrent>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <algorithm>
 #include <cmath>
 #if OCR_ORC_DEBUG_ENABLED
 #include <QtCore/QDebug>
+#endif
+
+// Include instrumentation header for test builds
+// This allows RegionDetector to use instrumentation when testing
+#ifdef OCR_ORC_TEST_BUILD
+#include "../../tests/instrumentation/PipelineInstrumentation.h"
 #endif
 
 namespace ocr_orc {
@@ -32,6 +48,9 @@ RegionDetector::RegionDetector()
     , maxCellHeight(200)
     , lineThreshold(100)
     , contourMinArea(400)
+    , consensusMode(LENIENT_CONSENSUS)
+    , enablePreprocessing(false)
+    , instrumentation(nullptr)
 {
 }
 
@@ -65,7 +84,7 @@ NormalizedCoords RegionDetector::convertToNormalized(const cv::Rect& rect, int i
     return CoordinateSystem::imageToNormalized(imgCoords, imgWidth, imgHeight);
 }
 
-DetectionResult RegionDetector::detectRegions(const QImage& image, const QString& method) {
+DetectionResult RegionDetector::detectRegions(const QImage& image, const QString& method, const DetectionParameters& params) {
     if (image.isNull()) {
         DetectionResult emptyResult;
         emptyResult.methodUsed = "none";
@@ -74,7 +93,7 @@ DetectionResult RegionDetector::detectRegions(const QImage& image, const QString
     
     // Check for OCR-first method
     if (method == "ocr-first") {
-        return detectRegionsOCRFirst(image, method);
+        return detectRegionsOCRFirst(image, method, params);
     }
     
     // Multi-scale detection: process at 3 scales and merge results
@@ -1004,79 +1023,579 @@ std::vector<cv::Rect> RegionDetector::formGridCells(const std::vector<cv::Point2
     return std::vector<cv::Rect>();
 }
 
-DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const QString& method) {
+DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const QString& method, const DetectionParameters& params) {
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] ========== OCR-FIRST DETECTION START ==========\n");
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Method: %s\n", method.toLocal8Bit().constData());
+    fflush(stderr);
+    
     DetectionResult result;
     result.methodUsed = method;
     
-    if (image.isNull()) {
-        return result;
+    try {
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 1: Validating input image...\n");
+        fflush(stderr);
+        if (image.isNull()) {
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] ERROR: Image is null!\n");
+            fflush(stderr);
+            return result;
+        }
+        
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 1: ✓ Image valid - Size: %dx%d\n", 
+                image.width(), image.height());
+        fflush(stderr);
+        
+        // Instrumentation: Start pipeline (disabled in production - only works in test builds)
+        // Note: Instrumentation calls are commented out to avoid compilation issues
+        // They would need to be enabled via preprocessor or runtime checks
+        
+        // Stage 1: OCR Extraction
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 2: Starting OCR Extraction stage...\n");
+        fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+        if (instrumentation) {
+            PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+            inst->startStage("Stage 1: OCR Extraction");
+        }
+#endif
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 2.1: Creating OcrTextExtractor...\n");
+        fflush(stderr);
+        
+        OcrTextExtractor extractor;
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 2.1: ✓ OcrTextExtractor created\n");
+        fflush(stderr);
+        
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 2.2: About to call extractTextRegions()...\n");
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] WARNING: This may take 30-120 seconds!\n");
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Current thread: %p\n", (void*)QThread::currentThread());
+        fflush(stderr);
+        
+        QList<OCRTextRegion> ocrRegions;
+        QElapsedTimer ocrStageTimer;
+        ocrStageTimer.start();
+        
+        try {
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Calling extractor.extractTextRegions() NOW...\n");
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] This is a blocking call - progress will appear stuck but OCR is working\n");
+            fflush(stderr);
+            
+            // Note: We can't emit progress here because we don't have access to the worker's signals
+            // The OCR call will block this thread, so the timer in DetectionWorker won't fire
+            // This is expected behavior - OCR is CPU-intensive and blocks the thread
+            
+            ocrRegions = extractor.extractTextRegions(image);
+            qint64 ocrElapsed = ocrStageTimer.elapsed();
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] ✓ extractTextRegions() returned (took %lld ms = %.1f seconds)\n", 
+                    ocrElapsed, ocrElapsed / 1000.0);
+            fflush(stderr);
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 2.2: ✓ extractTextRegions() returned\n");
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] OCR regions found: %lld\n", (long long)ocrRegions.size());
+            fflush(stderr);
+        } catch (const std::exception& e) {
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] EXCEPTION in extractTextRegions(): %s\n", e.what());
+            fflush(stderr);
+            throw; // Re-throw to be caught by outer try-catch
+        } catch (...) {
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] UNKNOWN EXCEPTION in extractTextRegions()\n");
+            fflush(stderr);
+            throw; // Re-throw to be caught by outer try-catch
+        }
+    
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        QVariantMap inputs;
+        inputs["image_width"] = image.width();
+        inputs["image_height"] = image.height();
+        QVariantMap outputs;
+        outputs["regions_found"] = ocrRegions.size();
+        double avgConfidence = 0.0;
+        if (!ocrRegions.isEmpty()) {
+            for (const OCRTextRegion& region : ocrRegions) {
+                avgConfidence += region.confidence;
+            }
+            avgConfidence /= ocrRegions.size();
+        }
+        outputs["avg_confidence"] = avgConfidence;
+        inst->logEvent("ocr_extraction", inputs, outputs);
+        inst->endStage("Stage 1: OCR Extraction");
+    }
+#endif
+    
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 3: Checking OCR results...\n");
+        fflush(stderr);
+        if (ocrRegions.isEmpty()) {
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 3: No OCR regions found, falling back to CV-only...\n");
+            fflush(stderr);
+            // Fallback to CV-only if OCR fails
+            try {
+                DetectionParameters defaultParams;
+                return detectRegions(image, "hybrid", defaultParams);
+            } catch (const std::exception& e) {
+                fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] EXCEPTION in fallback detectRegions(): %s\n", e.what());
+                fflush(stderr);
+                throw;
+            } catch (...) {
+                fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] UNKNOWN EXCEPTION in fallback detectRegions()\n");
+                fflush(stderr);
+                throw;
+            }
+        }
+        
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 3: ✓ OCR regions found, continuing with pipeline...\n");
+        fflush(stderr);
+        
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 4: Converting image to cv::Mat...\n");
+        fflush(stderr);
+        // Convert image to cv::Mat for CV processing
+        cv::Mat cvImage;
+        try {
+            cvImage = ImageConverter::qImageToMat(image);
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 4: ✓ Image converted - cv::Mat size: %dx%d\n", 
+                    cvImage.cols, cvImage.rows);
+            fflush(stderr);
+        } catch (const std::exception& e) {
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] EXCEPTION converting image: %s\n", e.what());
+            fflush(stderr);
+            throw;
+        } catch (...) {
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] UNKNOWN EXCEPTION converting image\n");
+            fflush(stderr);
+            throw;
+        }
+        
+        int imgWidth = image.width();
+        int imgHeight = image.height();
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Image dimensions: %dx%d\n", imgWidth, imgHeight);
+        fflush(stderr);
+        
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] DEBUG: About to check preprocessing flag...\n");
+        fflush(stderr);
+    
+    // Stage 0: Document Preprocessing (expert recommendation: handle scanned document issues)
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 5: Checking preprocessing flag (enablePreprocessing=%s)...\n", 
+            enablePreprocessing ? "true" : "false");
+    fflush(stderr);
+    if (enablePreprocessing) {
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 5.1: Starting document preprocessing...\n");
+        fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+        if (instrumentation) {
+            PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+            inst->startStage("Stage 0: Document Preprocessing");
+        }
+#endif
+        DocumentPreprocessor preprocessor;
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 5.2: Calling preprocessor.preprocess()...\n");
+        fflush(stderr);
+        cvImage = preprocessor.preprocess(cvImage);
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 5.2: ✓ Preprocessing complete\n");
+        fflush(stderr);
+        // Update image dimensions if preprocessing changed size (e.g., rotation)
+        imgWidth = cvImage.cols;
+        imgHeight = cvImage.rows;
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 5.3: Updated dimensions: %dx%d\n", imgWidth, imgHeight);
+        fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+        if (instrumentation) {
+            PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+            QVariantMap outputs;
+            outputs["output_width"] = imgWidth;
+            outputs["output_height"] = imgHeight;
+            inst->logEvent("preprocessing", QVariantMap(), outputs);
+            inst->endStage("Stage 0: Document Preprocessing");
+        }
+#endif
     }
     
-    // Stage 1: OCR Extraction
-    OcrTextExtractor extractor;
-    QList<OCRTextRegion> ocrRegions = extractor.extractTextRegions(image);
-    
-    if (ocrRegions.isEmpty()) {
-        // Fallback to CV-only if OCR fails
-        return detectRegions(image, "hybrid");
+    // Stage 1.5: Document Type Classification and Adaptive Thresholds
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 6: Starting document type classification...\n");
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        inst->startStage("Stage 1.5: Document Type Classification");
     }
+#endif
+    DocumentTypeClassifier classifier;
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 6.1: Calling classifier.classifyDocument()...\n");
+    fflush(stderr);
+    DocumentType docType = classifier.classifyDocument(cvImage);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 6.1: ✓ Classification complete, docType=%d\n", static_cast<int>(docType));
+    fflush(stderr);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 6.2: Creating AdaptiveThresholdManager...\n");
+    fflush(stderr);
+    AdaptiveThresholdManager thresholdManager(docType);
+    // Apply custom parameter overrides
+    thresholdManager.setCustomOverrides(params.baseBrightnessThreshold, params.edgeDensityThreshold,
+                                        params.horizontalEdgeDensityThreshold, params.verticalEdgeDensityThreshold,
+                                        params.iouThreshold, params.ocrConfidenceThreshold,
+                                        params.horizontalOverfitPercent, params.verticalOverfitPercent,
+                                        params.brightnessAdaptiveFactor);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 6.2: ✓ ThresholdManager created with custom overrides\n");
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Custom: brightness=%.2f, edge=%.3f, horiz=%.3f, vert=%.3f\n",
+            params.baseBrightnessThreshold, params.edgeDensityThreshold, 
+            params.horizontalEdgeDensityThreshold, params.verticalEdgeDensityThreshold);
+    fflush(stderr);
     
-    // Convert image to cv::Mat for CV processing
-    cv::Mat cvImage = ImageConverter::qImageToMat(image);
-    int imgWidth = image.width();
-    int imgHeight = image.height();
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        QVariantMap outputs;
+        outputs["document_type"] = static_cast<int>(docType);
+        QString docTypeStr = (docType == DocumentType::GOVERNMENT_FORM) ? "government" :
+                            (docType == DocumentType::MEDICAL_FORM) ? "medical" :
+                            (docType == DocumentType::TAX_FORM) ? "tax" :
+                            (docType == DocumentType::HANDWRITTEN_FORM) ? "handwritten" :
+                            (docType == DocumentType::STANDARD_FORM) ? "standard" : "unknown";
+        outputs["document_type_str"] = docTypeStr;
+        inst->logEvent("document_classification", QVariantMap(), outputs);
+        inst->endStage("Stage 1.5: Document Type Classification");
+    }
+#endif
+    
+    // Use adaptive confidence threshold based on document type
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 7: Getting OCR confidence threshold...\n");
+    fflush(stderr);
+    double ocrConfidenceThreshold = thresholdManager.getOcrConfidenceThreshold(docType);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 7: ✓ Threshold = %.2f\n", ocrConfidenceThreshold);
+    fflush(stderr);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 7.1: Setting confidence threshold on extractor...\n");
+    fflush(stderr);
+    extractor.setConfidenceThreshold(ocrConfidenceThreshold);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 7.1: ✓ Threshold set\n");
+    fflush(stderr);
+    
+    // Stage 1.6: Parallel Processing - Start rectangle detection in parallel
+    // (Rectangle detection runs while we do pattern analysis and refinement)
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 8: Creating RectangleDetector...\n");
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        inst->startStage("Stage 1.6: Parallel Rectangle Detection");
+    }
+#endif
+    RectangleDetector rectangleDetector;
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 8: ✓ RectangleDetector created\n");
+    fflush(stderr);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 8.1: Setting rectangle detector parameters...\n");
+    fflush(stderr);
+    rectangleDetector.setSensitivity(0.15);
+    rectangleDetector.setMinSize(15, 10);
+    rectangleDetector.setMaxSize(800, 300);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 8.1: ✓ Parameters set\n");
+    fflush(stderr);
+    
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 8.2: Creating QVariantMap for rectangle params...\n");
+    fflush(stderr);
+    QVariantMap rectParams;
+    rectParams["sensitivity"] = 0.15;
+    rectParams["min_size"] = QString("%1x%2").arg(15).arg(10);
+    rectParams["max_size"] = QString("%1x%2").arg(800).arg(300);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 8.2: ✓ QVariantMap created\n");
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        inst->logEvent("rectangle_detection_start", rectParams, QVariantMap());
+    }
+#endif
+    
+    // Start rectangle detection in parallel (will wait for result later in Pass 6)
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 9: Starting rectangle detection in parallel...\n");
+    fflush(stderr);
+    QFuture<QList<DetectedRectangle>> rectFuture = QtConcurrent::run([&rectangleDetector, &cvImage]() {
+        return rectangleDetector.detectRectangles(cvImage);
+    });
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 9: ✓ Rectangle detection started in parallel\n");
+    fflush(stderr);
     
     // Stage 2: Pattern Analysis (before individual refinement)
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10: Starting Stage 2: Pattern Analysis...\n");
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        inst->startStage("Stage 2: Pattern Analysis");
+    }
+#endif
     PatternAnalyzer patternAnalyzer;
     CheckboxDetector checkboxDetector;
     
+    // Apply checkbox parameters from DetectionParameters
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.1: Applying checkbox parameters from dialog...\n");
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.1: BEFORE - size: %d-%dpx, aspect: %.1f-%.1f, rectangularity: %.2f, standalone: %s\n",
+            params.minCheckboxSize, params.maxCheckboxSize, params.checkboxAspectRatioMin, params.checkboxAspectRatioMax, 
+            params.checkboxRectangularity, params.enableStandaloneCheckboxDetection ? "ENABLED" : "DISABLED");
+    fflush(stderr);
+    
+    checkboxDetector.setSizeRange(params.minCheckboxSize, params.maxCheckboxSize);
+    checkboxDetector.setAspectRatioRange(params.checkboxAspectRatioMin, params.checkboxAspectRatioMax);
+    checkboxDetector.setRectangularityThreshold(params.checkboxRectangularity);
+    
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.1: ✓ PatternAnalyzer and CheckboxDetector created\n");
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.1: ✓ Checkbox parameters APPLIED - size: %d-%dpx, aspect: %.1f-%.1f, rectangularity: %.2f\n",
+            params.minCheckboxSize, params.maxCheckboxSize, params.checkboxAspectRatioMin, params.checkboxAspectRatioMax, params.checkboxRectangularity);
+    fflush(stderr);
+    
     // Detect checkboxes for all regions
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.2: Detecting checkboxes for %lld regions...\n", (long long)ocrRegions.size());
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.2: WARNING - This may take 10-30 seconds (processing %lld regions sequentially)\n", (long long)ocrRegions.size());
+    fflush(stderr);
     QList<CheckboxDetection> checkboxes;
+    int checkboxCount = 0;
+    QElapsedTimer checkboxTimer;
+    checkboxTimer.start();
     for (const OCRTextRegion& ocrRegion : ocrRegions) {
         CheckboxDetection cb = checkboxDetector.detectCheckbox(ocrRegion, cvImage);
         checkboxes.append(cb);
+        checkboxCount++;
+        if (checkboxCount % 20 == 0) {
+            qint64 elapsed = checkboxTimer.elapsed();
+            double avgTimePerRegion = elapsed / (double)checkboxCount;
+            double estimatedRemaining = avgTimePerRegion * (ocrRegions.size() - checkboxCount) / 1000.0;
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.2: Processed %d/%lld checkboxes (%.1fs elapsed, ~%.1fs remaining)...\n", 
+                    checkboxCount, (long long)ocrRegions.size(), elapsed / 1000.0, estimatedRemaining);
+            fflush(stderr);
+        }
     }
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.2: ✓ Text-associated checkbox detection complete (%lld checkboxes)\n", (long long)checkboxes.size());
+    fflush(stderr);
+    
+    // Step 10.2.5: Detect standalone checkboxes (not associated with text)
+    QList<CheckboxDetection> standaloneCheckboxes;
+    if (params.enableStandaloneCheckboxDetection) {
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.2.5: Detecting standalone checkboxes (scanning entire image)...\n");
+        fflush(stderr);
+        standaloneCheckboxes = checkboxDetector.detectAllCheckboxes(cvImage);
+    } else {
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.2.5: Standalone checkbox detection disabled\n");
+        fflush(stderr);
+    }
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.2.5: ✓ Standalone checkbox detection complete (%lld checkboxes)\n", (long long)standaloneCheckboxes.size());
+    fflush(stderr);
+    
+    // Merge standalone checkboxes with text-associated ones (avoid duplicates)
+    int mergedCount = 0;
+    for (const CheckboxDetection& standalone : standaloneCheckboxes) {
+        // Check if this standalone checkbox is already in the text-associated list
+        bool isDuplicate = false;
+        for (const CheckboxDetection& textAssociated : checkboxes) {
+            if (!textAssociated.detected) continue;
+            
+            // Calculate IoU between standalone and text-associated checkbox
+            cv::Rect r1 = standalone.boundingBox;
+            cv::Rect r2 = textAssociated.boundingBox;
+            
+            int x1 = std::max(r1.x, r2.x);
+            int y1 = std::max(r1.y, r2.y);
+            int x2 = std::min(r1.x + r1.width, r2.x + r2.width);
+            int y2 = std::min(r1.y + r1.height, r2.y + r2.height);
+            
+            if (x2 > x1 && y2 > y1) {
+                int intersection = (x2 - x1) * (y2 - y1);
+                int unionArea = (r1.width * r1.height) + (r2.width * r2.height) - intersection;
+                double iou = unionArea > 0 ? static_cast<double>(intersection) / unionArea : 0.0;
+                
+                if (iou > 0.3) {  // More than 30% overlap = duplicate
+                    isDuplicate = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!isDuplicate) {
+            checkboxes.append(standalone);
+            mergedCount++;
+        }
+    }
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.2.5: Merged %d standalone checkboxes (total: %lld)\n", 
+            mergedCount, (long long)checkboxes.size());
+    fflush(stderr);
     
     // Analyze checkbox pattern
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.3: Analyzing checkbox pattern...\n");
+    fflush(stderr);
     QString checkboxPattern = patternAnalyzer.analyzeCheckboxPattern(ocrRegions, checkboxes);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 10.3: ✓ Pattern analysis complete\n");
+    fflush(stderr);
+    
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        QVariantMap outputs;
+        outputs["checkboxes_detected"] = checkboxes.size();
+        outputs["checkbox_pattern"] = checkboxPattern;
+        inst->logEvent("pattern_analysis", QVariantMap(), outputs);
+        inst->endStage("Stage 2: Pattern Analysis");
+    }
+#endif
     
     // Stage 3: Multi-Pass Refinement - Find EMPTY Form Fields Only
     // OCR text is ONLY used as coordinate hints - we never detect/highlight text itself
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 11: Starting Stage 3: Multi-Pass Refinement...\n");
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        inst->startStage("Stage 3: Multi-Pass Refinement");
+    }
+#endif
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 11.1: Creating TextRegionRefiner and FormFieldDetector...\n");
+    fflush(stderr);
     TextRegionRefiner refiner;
     FormFieldDetector formFieldDetector;
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 11.1: ✓ Refiner and Detector created\n");
+    fflush(stderr);
+    
+    // Stage 3.5: Initialize detection cache for performance optimization (expert recommendation)
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 11.2: Initializing detection cache...\n");
+    fflush(stderr);
+    DetectionCache detectionCache;
+    refiner.setDetectionCache(&detectionCache);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 11.2: ✓ Detection cache initialized\n");
+    fflush(stderr);
     
     // Pass 1: Use OCR hints to find empty form fields nearby
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 12: Pass 1 - Finding empty form fields...\n");
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 12: WARNING - This may take 15-60 seconds (processing %lld OCR hints with CV operations)\n", (long long)ocrRegions.size());
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        inst->startStage("Pass 1: Find Empty Form Fields");
+    }
+#endif
+    QElapsedTimer findFieldsTimer;
+    findFieldsTimer.start();
     QList<cv::Rect> emptyFormFields = refiner.findEmptyFormFields(ocrRegions, cvImage);
+    qint64 findFieldsElapsed = findFieldsTimer.elapsed();
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 12: ✓ Pass 1 complete - Found %lld empty form fields (took %.1f seconds)\n", 
+            (long long)emptyFormFields.size(), findFieldsElapsed / 1000.0);
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        QVariantMap outputs;
+        outputs["fields_found"] = emptyFormFields.size();
+        inst->logEvent("find_empty_fields", QVariantMap(), outputs);
+        inst->endStage("Pass 1: Find Empty Form Fields");
+    }
+#endif
     
     // Pass 2: Filter out any regions that contain text
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 13: Pass 2 - Filtering text-containing regions...\n");
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        inst->startStage("Pass 2: Filter Text-Containing Regions");
+    }
+#endif
     QList<cv::Rect> validatedFields;
+    int filteredOut = 0;
+    int totalFields = emptyFormFields.size();
+    int processedFields = 0;
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 13: Processing %d fields (regionContainsText can be slow)...\n", totalFields);
+    fflush(stderr);
+    QElapsedTimer filterTimer;
+    filterTimer.start();
     for (const cv::Rect& field : emptyFormFields) {
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 13: Processing field %d/%d (x=%d, y=%d, w=%d, h=%d)...\n", 
+                processedFields + 1, totalFields, field.x, field.y, field.width, field.height);
+        fflush(stderr);
         // Strict check: region must NOT contain any OCR text
-        if (!refiner.regionContainsText(field, cvImage, ocrRegions)) {
+        // Pass thresholdManager for adaptive thresholds
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 13: Calling regionContainsText() for field %d...\n", processedFields + 1);
+        fflush(stderr);
+        bool containsText = refiner.regionContainsText(field, cvImage, ocrRegions, &thresholdManager, 
+                                                       params.ocrOverlapThreshold, params.minHorizontalLines);
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 13: regionContainsText() returned: %s for field %d\n", 
+                containsText ? "true" : "false", processedFields + 1);
+        fflush(stderr);
+        if (!containsText) {
             validatedFields.append(field);
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 13: Field %d VALIDATED (no text)\n", processedFields + 1);
+        } else {
+            filteredOut++;
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 13: Field %d FILTERED OUT (contains text)\n", processedFields + 1);
+        }
+        fflush(stderr);
+        processedFields++;
+        if (processedFields % 10 == 0 || processedFields == totalFields) {
+            qint64 elapsed = filterTimer.elapsed();
+            double avgTime = elapsed / (double)processedFields;
+            double estimatedRemaining = avgTime * (totalFields - processedFields) / 1000.0;
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 13: Progress %d/%d (%.1fs elapsed, ~%.1fs remaining, avg %.1fms per field)...\n", 
+                    processedFields, totalFields, elapsed / 1000.0, estimatedRemaining, avgTime);
+            fflush(stderr);
         }
     }
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 13: ✓ Pass 2 complete - Validated: %lld, Filtered: %d\n", (long long)validatedFields.size(), filteredOut);
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        QVariantMap outputs;
+        outputs["validated_fields"] = validatedFields.size();
+        outputs["filtered_out"] = filteredOut;
+        inst->logEvent("text_filtering", QVariantMap(), outputs);
+        inst->endStage("Pass 2: Filter Text-Containing Regions");
+    }
+#endif
     
-    // Pass 3: EXTREMELY DRASTIC overfitting, especially vertical
+    // Pass 3: Adaptive overfitting based on document type
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 14: Pass 3 - Adaptive overfitting...\n");
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        inst->startStage("Pass 3: Adaptive Overfitting");
+    }
+#endif
     QList<cv::Rect> overfittedFields;
     for (const cv::Rect& field : validatedFields) {
-        // EXTREME overfit with asymmetric expansion:
-        // - Horizontal: 40% (more room for wide fields)
-        // - Vertical: 60% (MUCH more vertical room for multi-line fields)
+        // Use adaptive overfitting percentages based on document type (or custom params)
+        double horizontalOverfit = thresholdManager.getHorizontalOverfitPercent(docType);
+        double verticalOverfit = thresholdManager.getVerticalOverfitPercent(docType);
         cv::Rect overfitted = formFieldDetector.overfitRegionAsymmetric(
-            field, cvImage, 40, 60);  // 40% horizontal, 60% vertical
+            field, cvImage, static_cast<int>(horizontalOverfit), static_cast<int>(verticalOverfit));
         overfittedFields.append(overfitted);
     }
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 14: ✓ Pass 3 complete - Overfitted: %lld fields\n", (long long)overfittedFields.size());
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        QVariantMap outputs;
+        outputs["overfitted_fields"] = overfittedFields.size();
+        QVariantMap metadata;
+        metadata["horizontal_overfit_percent"] = thresholdManager.getHorizontalOverfitPercent(docType);
+        metadata["vertical_overfit_percent"] = thresholdManager.getVerticalOverfitPercent(docType);
+        inst->logEvent("overfitting", QVariantMap(), outputs, metadata);
+        inst->endStage("Pass 3: Adaptive Overfitting");
+    }
+#endif
     
     // Pass 3.5: Use smart boundary detection to find actual form field edges within overfitted regions
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 15: Pass 3.5 - Refining overfitted regions...\n");
+    fflush(stderr);
     QList<cv::Rect> refinedOverfitted = formFieldDetector.refineOverfittedRegions(
         overfittedFields, cvImage);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 15: ✓ Pass 3.5 complete - Refined: %lld regions\n", (long long)refinedOverfitted.size());
+    fflush(stderr);
     
     // Pass 4: Detect cell groups with shared walls (grid patterns)
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 16: Pass 4 - Detecting cell groups...\n");
+    fflush(stderr);
     QList<QList<cv::Rect>> cellGroups = formFieldDetector.detectCellGroupsWithSharedWalls(
         refinedOverfitted, cvImage);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 16: ✓ Pass 4 complete - Found %lld cell groups\n", (long long)cellGroups.size());
+    fflush(stderr);
     
     // Flatten cell groups back to individual regions (for now - can enhance later to keep groups)
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 16.1: Flattening cell groups...\n");
+    fflush(stderr);
     QList<cv::Rect> flattenedRegions = refinedOverfitted;
     for (const QList<cv::Rect>& group : cellGroups) {
         // Add any new cells found in groups
@@ -1098,41 +1617,101 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
             }
         }
     }
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 16.1: ✓ Flattened to %lld regions\n", (long long)flattenedRegions.size());
+    fflush(stderr);
     
     // Pass 5: Classify regions and filter out titles/headings
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 17: Pass 5 - Classifying and refining regions...\n");
+    fflush(stderr);
     QList<cv::Rect> classifiedFields = formFieldDetector.classifyAndRefineRegions(
         flattenedRegions, cvImage, ocrRegions);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 17: ✓ Pass 5 complete - Classified: %lld fields\n", (long long)classifiedFields.size());
+    fflush(stderr);
     
-    // Pass 6: SECONDARY PIPELINE - Concurrent rectangle/square detection
-    // Run rectangle detection (can be made truly concurrent later with QThread if needed)
-    RectangleDetector rectangleDetector;
-    rectangleDetector.setSensitivity(0.15);  // MUCH higher sensitivity (lower = more sensitive)
-    rectangleDetector.setMinSize(15, 10);    // Smaller minimums
-    rectangleDetector.setMaxSize(800, 300);  // Larger maximums
-    
-    // Run rectangle detection (for now, synchronously - can make concurrent with QThread later)
-    QList<DetectedRectangle> rectangleResults = rectangleDetector.detectRectangles(cvImage);
+    // Pass 6: SECONDARY PIPELINE - Get rectangle detection results (already running in parallel)
+    // Wait for rectangle detection to complete (started in Stage 1.6)
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 18: Pass 6 - Waiting for rectangle detection results...\n");
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 18: WARNING - This will block until parallel rectangle detection completes\n");
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        inst->startStage("Pass 6: Rectangle Detection Results");
+    }
+#endif
+    QElapsedTimer rectWaitTimer;
+    rectWaitTimer.start();
+    QList<DetectedRectangle> rectangleResults = rectFuture.result();
+    qint64 rectWaitElapsed = rectWaitTimer.elapsed();
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 18: ✓ Pass 6 complete - Found %lld rectangles (waited %.1f seconds)\n", 
+            (long long)rectangleResults.size(), rectWaitElapsed / 1000.0);
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        QVariantMap outputs;
+        outputs["rectangles_found"] = rectangleResults.size();
+        inst->logEvent("rectangle_detection_complete", QVariantMap(), outputs);
+        inst->endStage("Pass 6: Rectangle Detection Results");
+        inst->endStage("Stage 1.6: Parallel Rectangle Detection");
+    }
+#endif
     
     // Pass 7: MATCH and MERGE regions from both pipelines (consensus-based detection)
     // Match OCR-first results with rectangle detection results
     // Pass ocrRegions for text filtering
-    DetectionResult mergedResult = matchAndMergePipelines(classifiedFields, rectangleResults, image, ocrRegions);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 19: Pass 7 - Matching and merging pipelines...\n");
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        inst->startStage("Pass 7: Match and Merge Pipelines");
+    }
+#endif
+    DetectionResult mergedResult = matchAndMergePipelines(classifiedFields, rectangleResults, image, ocrRegions, params);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 19: ✓ Pass 7 complete - Merged: %lld regions (high: %d, medium: %d, low: %d)\n", 
+            (long long)mergedResult.regions.size(), mergedResult.highConfidence, mergedResult.mediumConfidence, mergedResult.lowConfidence);
+    fflush(stderr);
+#ifdef OCR_ORC_TEST_BUILD
+    if (instrumentation) {
+        PipelineInstrumentation* inst = static_cast<PipelineInstrumentation*>(instrumentation);
+        QVariantMap outputs;
+        outputs["merged_regions"] = mergedResult.regions.size();
+        outputs["high_confidence"] = mergedResult.highConfidence;
+        outputs["medium_confidence"] = mergedResult.mediumConfidence;
+        outputs["low_confidence"] = mergedResult.lowConfidence;
+        inst->logEvent("pipeline_merge", QVariantMap(), outputs);
+        inst->endStage("Pass 7: Match and Merge Pipelines");
+    }
+#endif
     
     // Pass 8: Use merged consensus regions directly (already processed in matchAndMergePipelines)
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 20: Pass 8 - Using merged consensus regions...\n");
+    fflush(stderr);
     QList<DetectedRegion> refinedRegions = mergedResult.regions;
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 20: ✓ Pass 8 - Starting with %lld regions\n", (long long)refinedRegions.size());
+    fflush(stderr);
     
     // Pass 8.5: CRITICAL FINAL FILTER - Remove ANY regions that contain text
     // This is the absolute gate: if text is detected inside, it's NOT an empty form field
     // Empty form fields should be bright, have low edge density, and NO OCR text overlap
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 21: Pass 8.5 - Final text filter (critical gate)...\n");
+    fflush(stderr);
     QList<DetectedRegion> textFilteredRegions;
+    int totalRegions = refinedRegions.size();
+    int processedRegions = 0;
+    int rejectedRegions = 0;
     for (const DetectedRegion& region : refinedRegions) {
         cv::Rect fieldRect = region.boundingBox;
         
         // STRICT check: region must NOT contain any text
         // This checks: OCR overlap, brightness, edge density, horizontal text lines
-        if (!refiner.regionContainsText(fieldRect, cvImage, ocrRegions)) {
+        // Pass thresholdManager for adaptive thresholds
+        if (!refiner.regionContainsText(fieldRect, cvImage, ocrRegions, &thresholdManager,
+                                       params.ocrOverlapThreshold, params.minHorizontalLines)) {
             textFilteredRegions.append(region);
         } else {
+            rejectedRegions++;
             // Region contains text - REJECT IT (not an empty form field)
             // This is the critical filter to ensure we only detect empty input cells/lines
             #if OCR_ORC_DEBUG_ENABLED
@@ -1140,25 +1719,89 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
                      << fieldRect.x << fieldRect.y << fieldRect.width << fieldRect.height;
             #endif
         }
+        processedRegions++;
+        if (processedRegions % 10 == 0 && totalRegions > 10) {
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 21: Processed %d/%d regions...\n", processedRegions, totalRegions);
+            fflush(stderr);
+        }
     }
     refinedRegions = textFilteredRegions;
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 21: ✓ Pass 8.5 complete - Kept: %lld, Rejected: %d\n", (long long)refinedRegions.size(), rejectedRegions);
+    fflush(stderr);
     
     // If we filtered out everything, that's okay - better to have no results than wrong results
     
-    // Pass 9: Enhance regions with additional classification and checkbox detection
+    // Pass 9: Form Structure Analysis (expert recommendation: semantic understanding)
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 22: Pass 9 - Form structure analysis...\n");
+    fflush(stderr);
+    FormStructureAnalyzer structureAnalyzer;
+    QList<FormFieldGroup> formGroups = structureAnalyzer.detectFormStructure(refinedRegions, ocrRegions);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 22: ✓ Pass 9 complete - Found %lld form groups\n", (long long)formGroups.size());
+    fflush(stderr);
+    
+    // Update regions with group information
+    for (DetectedRegion& region : refinedRegions) {
+        // Find which group this region belongs to
+        for (const FormFieldGroup& group : formGroups) {
+            for (const cv::Rect& groupField : group.fields) {
+                if (region.boundingBox.x == groupField.x &&
+                    region.boundingBox.y == groupField.y &&
+                    region.boundingBox.width == groupField.width &&
+                    region.boundingBox.height == groupField.height) {
+                    // Region belongs to this group
+                    region.suggestedGroup = group.groupType;
+                    // Infer field type from context
+                    QString inferredType = structureAnalyzer.inferFieldTypeFromContext(
+                        region.boundingBox, refinedRegions, ocrRegions);
+                    if (inferredType != "unknown") {
+                        region.inferredType = inferredType;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Pass 10: Enhance regions with additional classification and checkbox detection
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 23: Pass 10 - Enhancing regions with classification...\n");
+    fflush(stderr);
+    int enhancedCount = 0;
+    QList<cv::Rect> regionRects;  // Track existing region bounding boxes
+    for (const DetectedRegion& region : refinedRegions) {
+        regionRects.append(region.boundingBox);
+    }
+    
     for (DetectedRegion& region : refinedRegions) {
         cv::Rect fieldRect = region.boundingBox;
         
-        // Check if this field has a nearby checkbox
+        // Check if this field has a nearby checkbox (from text-associated or standalone)
         CheckboxDetection nearbyCheckbox;
-        for (int j = 0; j < ocrRegions.size(); j++) {
+        
+        // First check text-associated checkboxes
+        for (int j = 0; j < ocrRegions.size() && j < checkboxes.size(); j++) {
             cv::Rect ocrBox = ocrRegions[j].boundingBox;
             // Check if OCR hint is near this field (within 50px)
             int distanceX = std::abs((ocrBox.x + ocrBox.width/2) - (fieldRect.x + fieldRect.width/2));
             int distanceY = std::abs((ocrBox.y + ocrBox.height/2) - (fieldRect.y + fieldRect.height/2));
-            if (distanceX < 50 && distanceY < 50) {
+            if (distanceX < 50 && distanceY < 50 && checkboxes[j].detected) {
                 nearbyCheckbox = checkboxes[j];
                 break;
+            }
+        }
+        
+        // If no text-associated checkbox found, check standalone checkboxes
+        if (!nearbyCheckbox.detected) {
+            for (const CheckboxDetection& cb : checkboxes) {
+                if (!cb.detected) continue;
+                
+                cv::Rect cbRect = cb.boundingBox;
+                // Check if checkbox is near this field (within 50px)
+                int distanceX = std::abs((cbRect.x + cbRect.width/2) - (fieldRect.x + fieldRect.width/2));
+                int distanceY = std::abs((cbRect.y + cbRect.height/2) - (fieldRect.y + fieldRect.height/2));
+                if (distanceX < 50 && distanceY < 50) {
+                    nearbyCheckbox = cb;
+                    break;
+                }
             }
         }
         
@@ -1170,6 +1813,11 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
             fieldType = FormFieldType::CheckboxField;
         }
         
+        enhancedCount++;
+        if (enhancedCount % 10 == 0 && refinedRegions.size() > 10) {
+            fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 23: Enhanced %d/%lld regions...\n", enhancedCount, (long long)refinedRegions.size());
+            fflush(stderr);
+        }
         // Update confidence based on consensus and field characteristics
         if (region.method == "consensus") {
             region.confidence = std::min(0.95, region.confidence + 0.1);  // Boost consensus confidence
@@ -1209,6 +1857,62 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
         }
     }
     
+    // Add standalone checkboxes that don't match any existing region
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 23.5: Adding standalone checkboxes as separate regions...\n");
+    fflush(stderr);
+    int addedStandalone = 0;
+    // regionRects already declared above, just populate it
+    regionRects.clear();
+    for (const DetectedRegion& region : refinedRegions) {
+        regionRects.append(region.boundingBox);
+    }
+    
+    for (const CheckboxDetection& cb : checkboxes) {
+        if (!cb.detected) continue;
+        if (cb.placement != "standalone") continue;  // Only process standalone checkboxes
+        
+        cv::Rect cbRect = cb.boundingBox;
+        
+        // Check if this checkbox already matches an existing region
+        bool matchesExisting = false;
+        for (const cv::Rect& existingRect : regionRects) {
+            // Calculate IoU
+            int x1 = std::max(cbRect.x, existingRect.x);
+            int y1 = std::max(cbRect.y, existingRect.y);
+            int x2 = std::min(cbRect.x + cbRect.width, existingRect.x + existingRect.width);
+            int y2 = std::min(cbRect.y + cbRect.height, existingRect.y + existingRect.height);
+            
+            if (x2 > x1 && y2 > y1) {
+                int intersection = (x2 - x1) * (y2 - y1);
+                int unionArea = (cbRect.width * cbRect.height) + (existingRect.width * existingRect.height) - intersection;
+                double iou = unionArea > 0 ? static_cast<double>(intersection) / unionArea : 0.0;
+                
+                if (iou > 0.3) {  // More than 30% overlap = matches existing
+                    matchesExisting = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!matchesExisting) {
+            // Add as new region
+            DetectedRegion checkboxRegion;
+            checkboxRegion.boundingBox = cbRect;
+            checkboxRegion.coords = convertToNormalized(cbRect, image.width(), image.height());
+            checkboxRegion.method = "checkbox-detection";
+            checkboxRegion.confidence = cb.confidence > 0.0 ? cb.confidence : 0.85;  // High confidence for checkboxes
+            checkboxRegion.inferredType = "checkbox";
+            checkboxRegion.suggestedGroup = "CheckboxGroup";
+            checkboxRegion.suggestedColor = "blue";
+            
+            refinedRegions.append(checkboxRegion);
+            regionRects.append(cbRect);
+            addedStandalone++;
+        }
+    }
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 23.5: ✓ Added %d standalone checkboxes as separate regions\n", addedStandalone);
+    fflush(stderr);
+    
     // Stage 4: Group Inference
     GroupInferencer groupInferencer;
     
@@ -1238,6 +1942,11 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
         }
     }
     
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 23: ✓ Pass 10 complete - Enhanced %lld regions\n", (long long)refinedRegions.size());
+    fflush(stderr);
+    
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 24: Building final result...\n");
+    fflush(stderr);
     // Convert to list
     for (auto it = combinedGroups.begin(); it != combinedGroups.end(); ++it) {
         result.inferredGroups.append(it.value());
@@ -1246,7 +1955,11 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
     // Build result
     result.regions = refinedRegions;
     result.totalDetected = refinedRegions.size();
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 24.1: Result has %d regions\n", result.totalDetected);
+    fflush(stderr);
     
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 24.2: Counting confidence levels...\n");
+    fflush(stderr);
     // Count confidence levels and populate maps
     for (int i = 0; i < refinedRegions.size(); i++) {
         const DetectedRegion& region = refinedRegions[i];
@@ -1266,14 +1979,45 @@ DetectionResult RegionDetector::detectRegionsOCRFirst(const QImage& image, const
             result.suggestedColors[region.suggestedGroup] = region.suggestedColor;
         }
     }
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 24.2: ✓ Confidence: high=%d, medium=%d, low=%d\n", 
+            result.highConfidence, result.mediumConfidence, result.lowConfidence);
+    fflush(stderr);
+    
+    result.methodUsed = method;
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] Step 24.3: ✓ Final result built - Method: %s, Total: %d regions\n", 
+            result.methodUsed.toLocal8Bit().constData(), result.totalDetected);
+    fflush(stderr);
+    fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] ========== OCR-FIRST DETECTION SUCCESS ==========\n");
+    fflush(stderr);
     
     return result;
+    
+    } catch (const std::exception& e) {
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] CRITICAL EXCEPTION: %s\n", e.what());
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] ========== OCR-FIRST DETECTION FAILED ==========\n");
+        fflush(stderr);
+        qCritical() << "[RegionDetector::detectRegionsOCRFirst] Exception:" << e.what();
+        // Return empty result on error
+        result.totalDetected = 0;
+        result.regions.clear();
+        return result;
+    } catch (...) {
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] CRITICAL UNKNOWN EXCEPTION\n");
+        fprintf(stderr, "[RegionDetector::detectRegionsOCRFirst] ========== OCR-FIRST DETECTION FAILED ==========\n");
+        fflush(stderr);
+        qCritical() << "[RegionDetector::detectRegionsOCRFirst] Unknown exception";
+        // Return empty result on error
+        result.totalDetected = 0;
+        result.regions.clear();
+        return result;
+    }
 }
 
 DetectionResult RegionDetector::matchAndMergePipelines(const QList<cv::Rect>& ocrRegions,
                                                        const QList<DetectedRectangle>& rectangleRegions,
                                                        const QImage& image,
-                                                       const QList<OCRTextRegion>& ocrTextRegions)
+                                                       const QList<OCRTextRegion>& ocrTextRegions,
+                                                       const DetectionParameters& params)
 {
     DetectionResult result;
     result.methodUsed = "ocr-first+rectangle-consensus";
@@ -1285,10 +2029,23 @@ DetectionResult RegionDetector::matchAndMergePipelines(const QList<cv::Rect>& oc
     // Convert image to cv::Mat for text checking
     cv::Mat cvImage = ImageConverter::qImageToMat(image);
     
+    // Classify document type for adaptive thresholds
+    DocumentTypeClassifier classifier;
+    DocumentType docType = classifier.classifyDocument(cvImage);
+    AdaptiveThresholdManager thresholdManager(docType);
+    
     // Create TextRegionRefiner for text filtering
     TextRegionRefiner refiner;
     
     QList<DetectedRegion> matchedRegions;
+    
+    // Track all matches for multi-label field handling (expert recommendation)
+    // Use QList of pairs since cv::Rect doesn't work well with QMap as key
+    struct RectangleMatch {
+        cv::Rect rectangle;
+        QList<cv::Rect> ocrMatches;
+    };
+    QList<RectangleMatch> rectangleMatchesList;
     
     // Match OCR-first regions with rectangle detection regions
     // Strategy: Only keep regions detected by BOTH pipelines (consensus)
@@ -1297,6 +2054,7 @@ DetectionResult RegionDetector::matchAndMergePipelines(const QList<cv::Rect>& oc
     for (const cv::Rect& ocrRect : ocrRegions) {
         bool foundMatch = false;
         double bestMatchScore = 0.0;
+        double bestIou = 0.0;  // Track IoU for confidence calculation
         cv::Rect bestMatchedRect = ocrRect;
         
         // Check if this OCR region matches any rectangle detection
@@ -1321,16 +2079,38 @@ DetectionResult RegionDetector::matchAndMergePipelines(const QList<cv::Rect>& oc
             double ocrOverlap = ocrArea > 0 ? static_cast<double>(overlapArea) / ocrArea : 0.0;
             double cvOverlap = cvArea > 0 ? static_cast<double>(overlapArea) / cvArea : 0.0;
             
-            // MUCH more lenient matching: IoU > 0.3 OR either overlap > 0.4
-            // This allows partial matches and catches more regions
-            if (iou > 0.3 || ocrOverlap > 0.4 || cvOverlap > 0.4) {
+            // Tiered matching with adaptive IoU threshold (expert recommendation: 0.6 for strong match)
+            double iouThreshold = thresholdManager.getIoUThreshold(docType);
+            
+            if (iou > iouThreshold || ocrOverlap > 0.4 || cvOverlap > 0.4) {
                 foundMatch = true;
+                
+                // Track match for multi-label field handling
+                bool found = false;
+                for (RectangleMatch& match : rectangleMatchesList) {
+                    // Compare rectangles (within 5px tolerance)
+                    if (std::abs(match.rectangle.x - cvRect.x) < 5 &&
+                        std::abs(match.rectangle.y - cvRect.y) < 5 &&
+                        std::abs(match.rectangle.width - cvRect.width) < 5 &&
+                        std::abs(match.rectangle.height - cvRect.height) < 5) {
+                        match.ocrMatches.append(ocrRect);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    RectangleMatch newMatch;
+                    newMatch.rectangle = cvRect;
+                    newMatch.ocrMatches.append(ocrRect);
+                    rectangleMatchesList.append(newMatch);
+                }
                 
                 // Calculate match score (combine IoU and rectangle confidence)
                 double matchScore = iou * 0.6 + rectDet.confidence * 0.4;
                 
                 if (matchScore > bestMatchScore) {
                     bestMatchScore = matchScore;
+                    bestIou = iou;  // Store IoU for best match
                     // Use the intersection (more precise) or prefer rectangle if it has high confidence
                     if (rectDet.confidence > 0.8) {
                         bestMatchedRect = cvRect;  // Use rectangle detection if very confident
@@ -1346,9 +2126,24 @@ DetectionResult RegionDetector::matchAndMergePipelines(const QList<cv::Rect>& oc
             }
         }
         
-        // Create DetectedRegion from matched OR any OCR region (fallback to OCR-first)
-        // Always include OCR regions, but boost confidence if matched
-        if (foundMatch || true) {  // Always include OCR regions as fallback
+        // Create DetectedRegion based on consensus mode (expert recommendation)
+        bool shouldInclude = false;
+        
+        // Use custom consensus mode from params if set, otherwise use class member
+        bool useStrictConsensus = params.strictConsensus;
+        if (consensusMode == STRICT_CONSENSUS || useStrictConsensus) {
+            // Strict mode: Only include consensus matches (IoU > threshold)
+            double iouThreshold = thresholdManager.getIoUThreshold(docType);
+            shouldInclude = foundMatch && bestIou > iouThreshold;
+        } else {  // LENIENT_CONSENSUS
+            // Lenient mode: Include consensus matches OR high-confidence OCR-only
+            double iouThreshold = thresholdManager.getIoUThreshold(docType);
+            bool hasStrongMatch = foundMatch && bestIou > iouThreshold;
+            bool highConfidenceOcrOnly = !foundMatch && ocrRegions.size() < 20;  // Few regions = high confidence needed
+            shouldInclude = hasStrongMatch || highConfidenceOcrOnly;
+        }
+        
+        if (shouldInclude) {
             // Convert to normalized coordinates
             ImageCoords imgCoords(bestMatchedRect.x, bestMatchedRect.y, 
                                  bestMatchedRect.x + bestMatchedRect.width, 
@@ -1357,17 +2152,43 @@ DetectionResult RegionDetector::matchAndMergePipelines(const QList<cv::Rect>& oc
                 imgCoords, image.width(), image.height());
             
             // CRITICAL: Check if region contains text BEFORE adding it
-            if (refiner.regionContainsText(bestMatchedRect, cvImage, ocrTextRegions)) {
+            // Pass thresholdManager for adaptive thresholds
+            fprintf(stderr, "[RegionDetector::matchAndMergePipelines] Checking OCR region (x=%d,y=%d,w=%d,h=%d) for text...\n",
+                    bestMatchedRect.x, bestMatchedRect.y, bestMatchedRect.width, bestMatchedRect.height);
+            fflush(stderr);
+            bool containsText = refiner.regionContainsText(bestMatchedRect, cvImage, ocrTextRegions, &thresholdManager,
+                                                          params.ocrOverlapThreshold, params.minHorizontalLines);
+            fprintf(stderr, "[RegionDetector::matchAndMergePipelines] regionContainsText() returned: %s for OCR region\n",
+                    containsText ? "TRUE (REJECTING)" : "FALSE (KEEPING)");
+            fflush(stderr);
+            if (containsText) {
                 // Region contains text - skip it (not an empty form field)
+                fprintf(stderr, "[RegionDetector::matchAndMergePipelines] ✗ REJECTED OCR region - contains text\n");
+                fflush(stderr);
                 continue;
             }
+            fprintf(stderr, "[RegionDetector::matchAndMergePipelines] ✓ ACCEPTED OCR region - no text detected\n");
+            fflush(stderr);
             
             DetectedRegion region;
             region.coords = normCoords;
             region.boundingBox = bestMatchedRect;
             region.method = foundMatch ? "consensus" : "ocr-first";
-            // Confidence: consensus gets boost, OCR-only gets base confidence
-            region.confidence = foundMatch ? 0.85 : 0.70;  // Higher confidence for consensus, but still good for OCR-only
+            
+            // Tiered confidence based on match quality (expert recommendation)
+            if (foundMatch) {
+                double iouThreshold = thresholdManager.getIoUThreshold(docType);
+                if (bestIou > iouThreshold) {
+                    region.confidence = 0.9;  // Strong match - consensus
+                } else if (bestIou > 0.4) {
+                    region.confidence = 0.75;  // Weak match - lower confidence
+                } else {
+                    region.confidence = 0.70;  // Very weak match
+                }
+            } else {
+                region.confidence = 0.70;  // OCR-only, no match
+            }
+            
             region.inferredType = "form_field";
             region.suggestedGroup = "FormFieldGroup";
             region.suggestedColor = "green";
@@ -1402,10 +2223,23 @@ DetectionResult RegionDetector::matchAndMergePipelines(const QList<cv::Rect>& oc
         
         if (!alreadyMatched) {
             // CRITICAL: Check if rectangle region contains text BEFORE adding it
-            if (refiner.regionContainsText(rectDet.boundingBox, cvImage, ocrTextRegions)) {
+            // Pass thresholdManager for adaptive thresholds
+            fprintf(stderr, "[RegionDetector::matchAndMergePipelines] Checking rectangle (x=%d,y=%d,w=%d,h=%d,conf=%.2f) for text...\n",
+                    rectDet.boundingBox.x, rectDet.boundingBox.y, rectDet.boundingBox.width, rectDet.boundingBox.height, rectDet.confidence);
+            fflush(stderr);
+            bool containsText = refiner.regionContainsText(rectDet.boundingBox, cvImage, ocrTextRegions, &thresholdManager,
+                                                          params.ocrOverlapThreshold, params.minHorizontalLines);
+            fprintf(stderr, "[RegionDetector::matchAndMergePipelines] regionContainsText() returned: %s for rectangle\n",
+                    containsText ? "TRUE (REJECTING)" : "FALSE (KEEPING)");
+            fflush(stderr);
+            if (containsText) {
                 // Region contains text - skip it (not an empty form field)
+                fprintf(stderr, "[RegionDetector::matchAndMergePipelines] ✗ REJECTED rectangle - contains text\n");
+                fflush(stderr);
                 continue;
             }
+            fprintf(stderr, "[RegionDetector::matchAndMergePipelines] ✓ ACCEPTED rectangle - no text detected\n");
+            fflush(stderr);
             
             // High-confidence rectangle not matched - add it
             ImageCoords imgCoords(rectDet.boundingBox.x, rectDet.boundingBox.y, 
@@ -1452,6 +2286,106 @@ DetectionResult RegionDetector::matchAndMergePipelines(const QList<cv::Rect>& oc
     }
     
     return result;
+}
+
+QList<DetectedRegion> RegionDetector::handleMultiLabelFields(
+    const QMap<cv::Rect, QList<cv::Rect>>& rectangleToOcrMatches,
+    const QList<OCRTextRegion>& ocrTextRegions)
+{
+    QList<DetectedRegion> multiLabelFields;
+    
+    // Convert QMap to QList of pairs to iterate (cv::Rect doesn't work well with QMap iteration)
+    QList<QPair<cv::Rect, QList<cv::Rect>>> matchesList;
+    for (auto it = rectangleToOcrMatches.begin(); it != rectangleToOcrMatches.end(); ++it) {
+        matchesList.append(qMakePair(it.key(), it.value()));
+    }
+    
+    // Process matches
+    for (const QPair<cv::Rect, QList<cv::Rect>>& pair : matchesList) {
+        const cv::Rect& rect = pair.first;
+        const QList<cv::Rect>& ocrMatches = pair.second;
+        
+        // Only process if multiple OCR regions match this rectangle
+        if (ocrMatches.size() > 1) {
+            // Validate all labels make semantic sense (expert recommendation)
+            TextRegionRefiner refiner;
+            QList<QString> labelTexts;
+            bool allLabelsValid = true;
+            
+            // Extract label texts from OCR regions
+            for (const cv::Rect& ocrRect : ocrMatches) {
+                // Find corresponding OCRTextRegion (match by bounding box with tolerance)
+                bool found = false;
+                for (const OCRTextRegion& ocrRegion : ocrTextRegions) {
+                    // Match with tolerance (5px)
+                    if (std::abs(ocrRegion.boundingBox.x - ocrRect.x) < 5 &&
+                        std::abs(ocrRegion.boundingBox.y - ocrRect.y) < 5 &&
+                        std::abs(ocrRegion.boundingBox.width - ocrRect.width) < 5 &&
+                        std::abs(ocrRegion.boundingBox.height - ocrRect.height) < 5) {
+                        labelTexts.append(ocrRegion.text);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    allLabelsValid = false;
+                    break;
+                }
+            }
+            
+            // Validate semantic coherence (e.g., "Street:", "City:", "State:" for address field)
+            if (allLabelsValid && labelTexts.size() > 1) {
+                // Check if labels are semantically related (e.g., all address-related)
+                int addressRelated = 0;
+                int dateRelated = 0;
+                int nameRelated = 0;
+                
+                for (const QString& label : labelTexts) {
+                    QString lower = label.toLower();
+                    if (lower.contains("street") || lower.contains("city") || 
+                        lower.contains("state") || lower.contains("address") ||
+                        lower.contains("postal") || lower.contains("zip") ||
+                        lower.contains("province") || lower.contains("country")) {
+                        addressRelated++;
+                    } else if (lower.contains("date") || lower.contains("birth") ||
+                               lower.contains("month") || lower.contains("year") ||
+                               lower.contains("day")) {
+                        dateRelated++;
+                    } else if (lower.contains("first") || lower.contains("last") ||
+                               lower.contains("middle") || lower.contains("name") ||
+                               lower.contains("surname") || lower.contains("given")) {
+                        nameRelated++;
+                    }
+                }
+                
+                // If labels are semantically coherent (e.g., 2+ related labels)
+                bool isCoherent = (addressRelated >= 2) || (dateRelated >= 2) || (nameRelated >= 2);
+                
+                if (isCoherent) {
+                    // Create single field with multiple label associations
+                    // Note: Image size will be passed from calling function if needed
+                    // For now, use a placeholder that will be corrected
+                    ImageCoords imgCoords(rect.x, rect.y, rect.x + rect.width, rect.y + rect.height);
+                    // Use reasonable default size (will be corrected in calling function)
+                    NormalizedCoords normCoords = CoordinateSystem::imageToNormalized(
+                        imgCoords, 2000, 2000);  // Default, will be corrected
+                    
+                    DetectedRegion region;
+                    region.coords = normCoords;
+                    region.boundingBox = rect;
+                    region.method = "consensus-multi-label";
+                    region.confidence = 0.88;  // High confidence for multi-label validation
+                    region.inferredType = "form_field";
+                    region.suggestedGroup = "MultiLabelGroup";
+                    region.suggestedColor = "purple";
+                    
+                    multiLabelFields.append(region);
+                }
+            }
+        }
+    }
+    
+    return multiLabelFields;
 }
 
 } // namespace ocr_orc

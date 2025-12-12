@@ -58,14 +58,38 @@ public:
     bool isLikelyLabel(const QString& text);
     
     /**
+     * @brief Semantic label information
+     */
+    struct SemanticLabelInfo {
+        QString fieldType;        // "text_input", "date", "address", "name", "number", "unknown"
+        QString expectedLocation; // "below", "right", "above", "unknown"
+        double confidence;       // Confidence in semantic inference (0.0-1.0)
+        
+        SemanticLabelInfo() : fieldType("unknown"), expectedLocation("unknown"), confidence(0.0) {}
+    };
+    
+    /**
+     * @brief Infer field type and expected location from label text
+     * @param labelText Label text to analyze
+     * @return SemanticLabelInfo with inferred field type and location
+     */
+    SemanticLabelInfo inferFieldTypeFromLabel(const QString& labelText);
+    
+    /**
      * @brief Check if a region contains text (should be filtered out)
      * @param region Region to check
      * @param image Source image
      * @param ocrRegions All OCR text regions (to check for overlap)
+     * @param thresholdManager Optional adaptive threshold manager (for adaptive brightness)
+     * @param ocrOverlapThreshold Custom OCR overlap threshold (0.0-1.0, default 0.10)
+     * @param minHorizontalLines Custom minimum horizontal lines threshold (default 2)
      * @return True if region contains text, false if empty
      */
     bool regionContainsText(const cv::Rect& region, const cv::Mat& image, 
-                           const QList<OCRTextRegion>& ocrRegions);
+                           const QList<OCRTextRegion>& ocrRegions,
+                           class AdaptiveThresholdManager* thresholdManager = nullptr,
+                           double ocrOverlapThreshold = 0.10,
+                           int minHorizontalLines = 2);
     
     /**
      * @brief Multi-pass refinement: find empty form fields near OCR hints
@@ -74,6 +98,12 @@ public:
      * @return List of empty form field rectangles (no text content)
      */
     QList<cv::Rect> findEmptyFormFields(const QList<OCRTextRegion>& ocrHints, const cv::Mat& image);
+    
+    /**
+     * @brief Set detection cache for performance optimization
+     * @param cache Detection cache instance (can be nullptr to disable caching)
+     */
+    void setDetectionCache(class DetectionCache* cache);
 
 private:
     /**
@@ -166,9 +196,34 @@ private:
      */
     double calculateRectangularityScore(const cv::Rect& rect, const cv::Mat& image);
     
+    /**
+     * @brief Calculate horizontal edge density
+     * @param roi Region of interest
+     * @return Horizontal edge density (0.0-1.0)
+     */
+    double calculateHorizontalEdgeDensity(const cv::Mat& roi);
+    
+    /**
+     * @brief Calculate vertical edge density
+     * @param roi Region of interest
+     * @return Vertical edge density (0.0-1.0)
+     */
+    double calculateVerticalEdgeDensity(const cv::Mat& roi);
+    
+    /**
+     * @brief Count horizontal lines using Hough transform
+     * @param edges Edge image
+     * @param angleTolerance Angle tolerance in degrees (default: 5.0)
+     * @return Number of horizontal lines detected
+     */
+    int countHorizontalLinesWithHough(const cv::Mat& edges, double angleTolerance = 5.0);
+    
     int expansionRadiusPercent;  // Expansion radius as % of text height (default: 20)
     double lineDetectionScore;   // Cached line detection score
     double rectangularityScore;   // Cached rectangularity score
+    
+    // Detection cache for performance optimization (expert recommendation)
+    class DetectionCache* detectionCache;  // Optional cache for expensive calculations
 };
 
 } // namespace ocr_orc

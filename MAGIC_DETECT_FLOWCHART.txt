@@ -1,0 +1,236 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    MAGIC DETECT ALGORITHM - VISUAL FLOWCHART
+═══════════════════════════════════════════════════════════════════════════════
+
+START
+  │
+  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STAGE 1: OCR TEXT EXTRACTION (Coordinate Hints Only)                    │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ • Convert to grayscale                                            │  │
+│ │ • Gaussian blur (3x3)                                             │  │
+│ │ • Adaptive thresholding                                           │  │
+│ │ • Tesseract OCR (PSM_SPARSE_TEXT)                                 │  │
+│ │ • Extract text + bounding boxes                                    │  │
+│ │ • IMPORTANT: Text is ONLY for coordinate hints, NOT detection     │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STAGE 2: PATTERN ANALYSIS                                                │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ • Detect checkboxes near OCR text                                 │  │
+│ │ • Analyze checkbox placement patterns                             │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PASS 1: FIND EMPTY FORM FIELDS NEAR OCR HINTS                           │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ For each OCR hint (if label):                                     │  │
+│ │   1. Search BELOW label (priority)                                │  │
+│ │   2. Search RIGHT of label                                        │  │
+│ │   3. Search ABOVE label                                           │  │
+│ │                                                                     │  │
+│ │ In each search area:                                               │  │
+│ │   • Adaptive thresholding (inverted) → highlight empty areas    │  │
+│ │   • Morphology → find underlines                                   │  │
+│ │   • Canny edges → find rectangular boxes                           │  │
+│ │   • Check brightness >0.65 (empty = bright)                       │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PASS 2: FILTER REGIONS CONTAINING TEXT                                  │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ For each candidate field:                                        │  │
+│ │   ❌ OCR overlap >10%? → REJECT                                   │  │
+│ │   ❌ Brightness <0.7? → REJECT                                    │  │
+│ │   ❌ Edge density >0.1? → REJECT                                  │  │
+│ │   ✅ Pass all checks? → KEEP (empty field)                        │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PASS 3: EXTREME OVERFITTING                                             │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ For each validated field:                                         │  │
+│ │   • Expand 40% horizontal (min 25px)                              │  │
+│ │   • Expand 60% vertical (min 30px)                                │  │
+│ │   • Purpose: Capture full boundaries                              │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PASS 3.5: SMART BOUNDARY DETECTION                                      │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ For each overfitted region:                                       │  │
+│ │   • Canny edges (50, 150)                                         │  │
+│ │   • Morphological dilation                                        │  │
+│ │   • Find contours → score by:                                    │  │
+│ │     - Rectangularity                                              │  │
+│ │     - Size (30-400px wide, 10-60px tall)                         │  │
+│ │     - Emptiness (brightness >0.65)                               │  │
+│ │                                                                     │  │
+│ │ Hard Edge Anchoring:                                              │  │
+│ │   • Search 80px ABOVE → lock top edge                             │  │
+│ │   • Search 80px LEFT → lock left edge                             │  │
+│ │   • Search 80px RIGHT → lock right edge                           │  │
+│ │   • Extend downward 80%                                           │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PASS 4: DETECT CELL GROUPS WITH SHARED WALLS                            │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ 1. Detect ALL vertical walls in image:                           │  │
+│ │    • Canny (20, 80) - very sensitive                             │  │
+│ │    • Multiple thresholding methods                                │  │
+│ │    • HoughLinesP for thin lines                                  │  │
+│ │                                                                     │  │
+│ │ 2. Group regions by shared walls:                                │  │
+│ │    • Horizontally aligned                                         │  │
+│ │    • Separated by detected walls OR <5px gap                      │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PASS 5: CLASSIFY AND FILTER                                              │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ Filter Titles/Headings:                                           │  │
+│ │   ❌ Large OCR text overlap? → REJECT                            │  │
+│ │   ❌ Very large/wide region? → REJECT                             │  │
+│ │   ❌ Low brightness + high edges? → REJECT                       │  │
+│ │                                                                     │  │
+│ │ Classify Types:                                                    │  │
+│ │   • TextBlock: 3+ horizontal lines, height >40px                 │  │
+│ │   • TextLine: Single underline                                    │  │
+│ │   • Cell: Box borders, small size                                 │  │
+│ │   • TextInput: Default                                            │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PASS 6: CONCURRENT RECTANGLE DETECTION (Secondary Pipeline)            │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ Detection Methods (Combined):                                    │  │
+│ │   • Canny edges: 3 levels (10/30, 20/60, 30/90)                  │  │
+│ │   • Adaptive thresholding                                        │  │
+│ │   • Binary thresholding: 5 levels (80, 120, 160, 200, 240)     │  │
+│ │                                                                     │  │
+│ │ Aggressive Morphology:                                            │  │
+│ │   • 5x5 kernel                                                     │  │
+│ │   • MORPH_CLOSE 3x                                                │  │
+│ │   • Dilation 2x                                                   │  │
+│ │                                                                     │  │
+│ │ Find Contours:                                                    │  │
+│ │   • RETR_TREE (nested rectangles)                                │  │
+│ │   • Score by rectangularity (>0.15) OR area ratio (>0.4)         │  │
+│ │   • Overfit: Expand 10% (min 5px)                                 │  │
+│ │   • Deduplicate: Remove >70% overlap                             │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PASS 7: MATCH AND MERGE PIPELINES (Consensus)                          │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ For each OCR-first region:                                        │  │
+│ │   • Match with rectangles:                                        │  │
+│ │     - IoU >0.3 OR overlap >0.4 → MATCH                           │  │
+│ │   • If matched:                                                   │  │
+│ │     - Use intersection (or prefer rectangle if conf >0.8)        │  │
+│ │     - Mark "consensus", confidence 0.85                           │  │
+│ │   • If not matched:                                               │  │
+│ │     - Still include (fallback)                                   │  │
+│ │     - Mark "ocr-first", confidence 0.70                           │  │
+│ │                                                                     │  │
+│ │   ❌ Check text BEFORE adding:                                    │  │
+│ │     - OCR overlap >10%? → REJECT                                 │  │
+│ │     - Brightness <0.7? → REJECT                                  │  │
+│ │     - Edge density >0.08? → REJECT                               │  │
+│ │     - 3+ horizontal lines? → REJECT                              │  │
+│ │                                                                     │  │
+│ │ For each rectangle (not matched):                                 │  │
+│ │   • If confidence >0.5:                                          │  │
+│ │     - Check text (same checks)                                   │  │
+│ │     - If no text, add as "rectangle-detection"                    │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PASS 8.5: FINAL TEXT FILTER (Critical Gate)                            │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ For each merged region:                                           │  │
+│ │   ❌ OCR overlap >10%? → REJECT                                  │  │
+│ │   ❌ Brightness <0.7? → REJECT                                    │  │
+│ │   ❌ Edge density >0.08? → REJECT                                 │  │
+│ │   ❌ 3+ horizontal lines? → REJECT                                 │  │
+│ │   ✅ Pass ALL checks? → KEEP (empty form field)                   │  │
+│ │                                                                     │  │
+│ │ ONLY empty form fields survive this gate                          │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PASS 9: ENHANCE AND CLASSIFY                                            │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ For each region:                                                  │  │
+│ │   • Find nearby checkboxes (within 50px)                          │  │
+│ │   • Re-classify type (TextLine, TextBlock, Cell, etc.)          │  │
+│ │   • Adjust confidence:                                            │  │
+│ │     - Consensus: +0.1 (max 0.95)                                 │  │
+│ │     - Checkbox: 0.9                                               │  │
+│ │     - TextInput: max(current, 0.8)                               │  │
+│ │   • Assign metadata: type, group, color                           │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PASS 10: GROUP INFERENCE                                                │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ • Spatial grouping (proximity, alignment)                        │  │
+│ │ • Pattern-based grouping (postal codes, names, sequences)       │  │
+│ │ • Merge groups, assign names and colors                           │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ FINAL ASSEMBLY                                                           │
+│ ┌───────────────────────────────────────────────────────────────────┐  │
+│ │ • Count confidence levels (High/Medium/Low)                      │  │
+│ │ • Populate region types and color maps                            │  │
+│ │ • Build DetectionResult                                           │  │
+│ └───────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+                              RETURN
+                         DetectionResult
+                    (Empty form fields only)
+
+═══════════════════════════════════════════════════════════════════════════════
+                              KEY PRINCIPLES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. OCR is Hints Only: Text extraction provides coordinates, NOT detection targets
+2. Empty Fields Only: Multi-layer text filtering ensures only empty form fields
+3. Consensus is King: Both pipelines agree = highest confidence (0.85)
+4. Overfitting is Intentional: Overfit to capture boundaries, then refine
+5. Multi-Layer Filtering: Text checks at 3+ stages for reliability
+6. Fallback Mechanisms: OCR-only regions included if no rectangle match
+
+═══════════════════════════════════════════════════════════════════════════════

@@ -1,4 +1,6 @@
 #include "TextRegionRefiner.h"
+#include "AdaptiveThresholdManager.h"
+#include "DetectionCache.h"
 #include "../core/CoordinateSystem.h"
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -12,7 +14,13 @@ TextRegionRefiner::TextRegionRefiner()
     : expansionRadiusPercent(50)  // Increased from 20% to 50% for better form field detection
     , lineDetectionScore(0.0)
     , rectangularityScore(0.0)
+    , detectionCache(nullptr)
 {
+}
+
+void TextRegionRefiner::setDetectionCache(DetectionCache* cache)
+{
+    detectionCache = cache;
 }
 
 NormalizedCoords TextRegionRefiner::refineRegion(const OCRTextRegion& ocrRegion, const cv::Mat& image)
@@ -282,6 +290,83 @@ bool TextRegionRefiner::isLikelyLabel(const QString& text)
     return false;
 }
 
+TextRegionRefiner::SemanticLabelInfo TextRegionRefiner::inferFieldTypeFromLabel(const QString& labelText)
+{
+    SemanticLabelInfo info;
+    
+    if (labelText.isEmpty()) {
+        return info;
+    }
+    
+    QString lower = labelText.trimmed().toLower();
+    
+    // Remove trailing colon if present
+    if (lower.endsWith(':')) {
+        lower = lower.left(lower.length() - 1).trimmed();
+    }
+    
+    // Name fields (expert recommendation: 95% of forms place name fields below labels)
+    if (lower.contains("name") || lower.contains("first") || lower.contains("last") || 
+        lower.contains("middle") || lower.contains("surname") || lower.contains("given")) {
+        info.fieldType = "text_input";
+        info.expectedLocation = "below";
+        info.confidence = 0.95;
+        return info;
+    }
+    
+    // Address fields
+    if (lower.contains("address") || lower.contains("street") || lower.contains("city") ||
+        lower.contains("state") || lower.contains("province") || lower.contains("postal") ||
+        lower.contains("zip") || lower.contains("country")) {
+        info.fieldType = "text_input";
+        info.expectedLocation = "below";
+        info.confidence = 0.90;
+        return info;
+    }
+    
+    // Date fields
+    if (lower.contains("date") || lower.contains("birth") || lower.contains("dob") ||
+        lower.contains("expir") || lower.contains("issued")) {
+        info.fieldType = "date";
+        info.expectedLocation = "below";
+        info.confidence = 0.85;
+        return info;
+    }
+    
+    // Contact fields
+    if (lower.contains("phone") || lower.contains("telephone") || lower.contains("mobile") ||
+        lower.contains("email") || lower.contains("e-mail") || lower.contains("contact")) {
+        info.fieldType = "text_input";
+        info.expectedLocation = "below";
+        info.confidence = 0.90;
+        return info;
+    }
+    
+    // Number fields
+    if (lower.contains("number") || lower.contains("id") || lower.contains("code") ||
+        lower.contains("#") || lower.contains("num")) {
+        info.fieldType = "number";
+        info.expectedLocation = "below";
+        info.confidence = 0.80;
+        return info;
+    }
+    
+    // Age, quantity, etc.
+    if (lower.contains("age") || lower.contains("quantity") || lower.contains("qty") ||
+        lower.contains("amount") || lower.contains("price") || lower.contains("total")) {
+        info.fieldType = "number";
+        info.expectedLocation = "right";  // Often to the right
+        info.confidence = 0.75;
+        return info;
+    }
+    
+    // Default: unknown type, but likely below (most common)
+    info.fieldType = "text_input";
+    info.expectedLocation = "below";
+    info.confidence = 0.60;
+    return info;
+}
+
 cv::Rect TextRegionRefiner::findFormFieldNearLabel(const cv::Rect& labelBox, const cv::Mat& image)
 {
     if (image.empty()) {
@@ -517,11 +602,112 @@ cv::Rect TextRegionRefiner::detectFormFieldInArea(const cv::Rect& searchArea, co
     return bestField;
 }
 
-bool TextRegionRefiner::regionContainsText(const cv::Rect& region, const cv::Mat& image, 
-                                          const QList<OCRTextRegion>& ocrRegions)
+double TextRegionRefiner::calculateHorizontalEdgeDensity(const cv::Mat& roi)
 {
+    if (roi.empty() || roi.rows == 0 || roi.cols == 0) {
+        return 0.0;
+    }
+    
+    // Apply Canny edge detection
+    cv::Mat edges;
+    cv::Canny(roi, edges, 50, 150);
+    
+    // Create horizontal kernel to emphasize horizontal edges
+    cv::Mat horizontalKernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 1));
+    cv::Mat horizontalEdges;
+    cv::morphologyEx(edges, horizontalEdges, cv::MORPH_DILATE, horizontalKernel);
+    
+    // Count horizontal edge pixels
+    int horizontalEdgePixels = cv::countNonZero(horizontalEdges);
+    double horizontalDensity = static_cast<double>(horizontalEdgePixels) / (roi.rows * roi.cols);
+    
+    return horizontalDensity;
+}
+
+double TextRegionRefiner::calculateVerticalEdgeDensity(const cv::Mat& roi)
+{
+    if (roi.empty() || roi.rows == 0 || roi.cols == 0) {
+        return 0.0;
+    }
+    
+    // Apply Canny edge detection
+    cv::Mat edges;
+    cv::Canny(roi, edges, 50, 150);
+    
+    // Create vertical kernel to emphasize vertical edges
+    cv::Mat verticalKernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(1, 5));
+    cv::Mat verticalEdges;
+    cv::morphologyEx(edges, verticalEdges, cv::MORPH_DILATE, verticalKernel);
+    
+    // Count vertical edge pixels
+    int verticalEdgePixels = cv::countNonZero(verticalEdges);
+    double verticalDensity = static_cast<double>(verticalEdgePixels) / (roi.rows * roi.cols);
+    
+    return verticalDensity;
+}
+
+int TextRegionRefiner::countHorizontalLinesWithHough(const cv::Mat& edges, double angleTolerance)
+{
+    if (edges.empty() || edges.rows == 0 || edges.cols == 0) {
+        return 0;
+    }
+    
+    // Use HoughLinesP to detect lines
+    std::vector<cv::Vec4i> lines;
+    int minLineLength = std::min(edges.cols / 4, 20);  // At least 25% of width or 20px
+    int maxLineGap = 5;
+    cv::HoughLinesP(edges, lines, 1, CV_PI / 180, 30, minLineLength, maxLineGap);
+    
+    // Count horizontal lines (within angle tolerance)
+    int horizontalCount = 0;
+    double angleToleranceRad = angleTolerance * CV_PI / 180.0;
+    
+    for (const cv::Vec4i& line : lines) {
+        int x1 = line[0], y1 = line[1], x2 = line[2], y2 = line[3];
+        
+        // Calculate angle
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        
+        if (std::abs(dx) < 1.0) {
+            // Vertical line, skip
+            continue;
+        }
+        
+        double angle = std::atan2(std::abs(dy), std::abs(dx));
+        
+        // Check if line is horizontal (within tolerance)
+        // Horizontal means angle close to 0 or PI
+        if (angle < angleToleranceRad || angle > (CV_PI - angleToleranceRad)) {
+            horizontalCount++;
+        }
+    }
+    
+    return horizontalCount;
+}
+
+bool TextRegionRefiner::regionContainsText(const cv::Rect& region, const cv::Mat& image, 
+                                          const QList<OCRTextRegion>& ocrRegions,
+                                          AdaptiveThresholdManager* thresholdManager,
+                                          double ocrOverlapThreshold,
+                                          int minHorizontalLines)
+{
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] ENTERED - region(x=%d,y=%d,w=%d,h=%d), ocrRegions=%lld, imageSize=%dx%d\n", 
+            region.x, region.y, region.width, region.height, (long long)ocrRegions.size(), 
+            image.cols, image.rows);
+    fflush(stderr);
+    
     // Check if region overlaps with any OCR text regions
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 1: Checking OCR overlap (%lld regions)...\n", (long long)ocrRegions.size());
+    fflush(stderr);
+    int ocrCheckCount = 0;
     for (const OCRTextRegion& ocrRegion : ocrRegions) {
+        ocrCheckCount++;
+        if (ocrCheckCount % 20 == 0) {
+            fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 1: Checked %d/%lld OCR regions...\n", 
+                    ocrCheckCount, (long long)ocrRegions.size());
+            fflush(stderr);
+        }
         cv::Rect ocrBox = ocrRegion.boundingBox;
         
         // Calculate overlap
@@ -535,19 +721,32 @@ bool TextRegionRefiner::regionContainsText(const cv::Rect& region, const cv::Mat
         int regionArea = region.width * region.height;
         int ocrArea = ocrBox.width * ocrBox.height;
         
-        // STRICTER: If ANY overlap (>10% of region or OCR area), region contains text
+        // STRICTER: If ANY overlap (>threshold% of region or OCR area), region contains text
         // We want EMPTY form fields only - any text overlap is a disqualifier
-        if (overlapArea > regionArea * 0.1 || overlapArea > ocrArea * 0.1) {
+        double regionOverlapPercent = regionArea > 0 ? (overlapArea * 100.0 / regionArea) : 0.0;
+        double ocrOverlapPercent = ocrArea > 0 ? (overlapArea * 100.0 / ocrArea) : 0.0;
+        if (overlapArea > regionArea * ocrOverlapThreshold || overlapArea > ocrArea * ocrOverlapThreshold) {
+            fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 1: ✓ Found OCR overlap (region: %.1f%%, OCR: %.1f%%) - returning TRUE\n",
+                    regionOverlapPercent, ocrOverlapPercent);
+            fflush(stderr);
             return true;
         }
     }
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 1: ✓ No OCR overlap found\n");
+    fflush(stderr);
     
     // Also check image content: if region has low brightness (dark pixels = text), it contains text
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 2: Checking image validity...\n");
+    fflush(stderr);
     if (image.empty() || region.width <= 0 || region.height <= 0) {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 2: Image empty or invalid region - returning FALSE\n");
+        fflush(stderr);
         return false;
     }
     
     // Clamp region to image bounds
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 3: Clamping region to image bounds...\n");
+    fflush(stderr);
     cv::Rect clampedRegion(
         std::max(0, region.x),
         std::max(0, region.y),
@@ -556,67 +755,219 @@ bool TextRegionRefiner::regionContainsText(const cv::Rect& region, const cv::Mat
     );
     
     if (clampedRegion.width <= 0 || clampedRegion.height <= 0) {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 3: Clamped region invalid - returning FALSE\n");
+        fflush(stderr);
         return false;
     }
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 3: ✓ Clamped region: x=%d,y=%d,w=%d,h=%d\n", 
+            clampedRegion.x, clampedRegion.y, clampedRegion.width, clampedRegion.height);
+    fflush(stderr);
     
     // Convert to grayscale if needed
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 4: Converting to grayscale (channels=%d)...\n", image.channels());
+    fflush(stderr);
     cv::Mat gray;
     if (image.channels() == 3) {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 4: Calling cv::cvtColor() - this may take time on large images...\n");
+        fflush(stderr);
         cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 4: ✓ cv::cvtColor() returned\n");
+        fflush(stderr);
     } else {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 4: Cloning image (already grayscale)...\n");
+        fflush(stderr);
         gray = image.clone();
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 4: ✓ Image cloned\n");
+        fflush(stderr);
     }
     
     // Extract ROI
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 5: Extracting ROI...\n");
+    fflush(stderr);
     cv::Mat roi = gray(clampedRegion);
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 5: ✓ ROI extracted (size: %dx%d)\n", roi.cols, roi.rows);
+    fflush(stderr);
     
     // Calculate mean brightness
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 6: Calculating mean brightness...\n");
+    fflush(stderr);
     cv::Scalar meanBrightness = cv::mean(roi);
     double brightness = meanBrightness[0] / 255.0;
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 6: ✓ Brightness = %.3f\n", brightness);
+    fflush(stderr);
     
-    // STRICTER: If brightness is too low (<0.7), likely contains text (dark pixels)
-    // Empty form fields should be bright/white
-    if (brightness < 0.7) {
-        return true;
+    // Adaptive brightness thresholding (expert recommendation)
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 7: Getting brightness threshold (thresholdManager=%p)...\n", thresholdManager);
+    fflush(stderr);
+    double brightnessThreshold;
+    if (thresholdManager) {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 7: Calling thresholdManager->getBrightnessThreshold()...\n");
+        fflush(stderr);
+        // Use adaptive threshold based on document type and local brightness
+        brightnessThreshold = thresholdManager->getBrightnessThreshold(
+            thresholdManager->getDocumentType(), clampedRegion, image);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 7: ✓ getBrightnessThreshold() returned: %.3f\n", brightnessThreshold);
+        fflush(stderr);
+    } else {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 7: No thresholdManager - calculating local brightness manually...\n");
+        fflush(stderr);
+        // Fallback: calculate local brightness manually
+        int padding = 50;
+        cv::Rect expandedRegion(
+            std::max(0, clampedRegion.x - padding),
+            std::max(0, clampedRegion.y - padding),
+            std::min(image.cols - std::max(0, clampedRegion.x - padding), clampedRegion.width + padding * 2),
+            std::min(image.rows - std::max(0, clampedRegion.y - padding), clampedRegion.height + padding * 2)
+        );
+        if (expandedRegion.width > 0 && expandedRegion.height > 0) {
+            fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 7: Calculating local mean on expanded region...\n");
+            fflush(stderr);
+            cv::Mat expandedRoi = gray(expandedRegion);
+            cv::Scalar localMean = cv::mean(expandedRoi);
+            double localBrightness = localMean[0] / 255.0;
+            brightnessThreshold = localBrightness * 0.85;  // 85% of local brightness
+            fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 7: ✓ Local brightness = %.3f, threshold = %.3f\n", 
+                    localBrightness, brightnessThreshold);
+            fflush(stderr);
+        } else {
+            brightnessThreshold = 0.7 * 0.9;  // Fallback
+            fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 7: Expanded region invalid - using fallback threshold = %.3f\n", brightnessThreshold);
+            fflush(stderr);
+        }
+        // Ensure minimum threshold
+        if (brightnessThreshold < 0.7 * 0.9) {
+            brightnessThreshold = 0.7 * 0.9;  // At least 90% of base 0.7
+        }
     }
     
-    // Check for text-like patterns (high variance = edges/text)
+    // If brightness is too low (below adaptive threshold), likely contains text
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 8: Comparing brightness (%.3f < %.3f?)...\n", brightness, brightnessThreshold);
+    fflush(stderr);
+    if (brightness < brightnessThreshold) {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 8: ✓ Brightness too low - returning TRUE\n");
+        fflush(stderr);
+        return true;
+    }
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 8: ✓ Brightness OK, continuing...\n");
+    fflush(stderr);
+    
+    // Check for text-like patterns using multiple edge density metrics (expert recommendation)
+    // Use detection cache if available for performance optimization
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9: Computing edge densities (detectionCache=%p)...\n", detectionCache);
+    fflush(stderr);
     cv::Mat edges;
-    cv::Canny(roi, edges, 50, 150);
-    int edgePixels = cv::countNonZero(edges);
-    double edgeDensity = static_cast<double>(edgePixels) / (roi.rows * roi.cols);
+    double totalEdgeDensity;
+    double horizontalEdgeDensity;
+    double verticalEdgeDensity;
     
-    // STRICTER: Lower edge density threshold (>0.08) suggests text content
-    // Empty form fields should have low edge density (just borders)
-    if (edgeDensity > 0.08) {
-        return true;
+    if (detectionCache) {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9: Using detection cache...\n");
+        fflush(stderr);
+        // Use cache for expensive calculations
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.1: Calling cache->getCannyEdges()...\n");
+        fflush(stderr);
+        edges = detectionCache->getCannyEdges(image, region, 50, 150);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.1: ✓ getCannyEdges() returned\n");
+        fflush(stderr);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.2: Calling cache->getEdgeDensity()...\n");
+        fflush(stderr);
+        totalEdgeDensity = detectionCache->getEdgeDensity(image, region, 50, 150);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.2: ✓ getEdgeDensity() returned: %.3f\n", totalEdgeDensity);
+        fflush(stderr);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.3: Calling cache->getHorizontalEdgeDensity()...\n");
+        fflush(stderr);
+        horizontalEdgeDensity = detectionCache->getHorizontalEdgeDensity(image, region);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.3: ✓ getHorizontalEdgeDensity() returned: %.3f\n", horizontalEdgeDensity);
+        fflush(stderr);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.4: Calling cache->getVerticalEdgeDensity()...\n");
+        fflush(stderr);
+        verticalEdgeDensity = detectionCache->getVerticalEdgeDensity(image, region);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.4: ✓ getVerticalEdgeDensity() returned: %.3f\n", verticalEdgeDensity);
+        fflush(stderr);
+    } else {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9: No cache - computing directly (SLOW!)...\n");
+        fflush(stderr);
+        // Compute directly (fallback if cache not available)
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.1: Calling cv::Canny() - this is EXPENSIVE...\n");
+        fflush(stderr);
+        cv::Canny(roi, edges, 50, 150);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.1: ✓ cv::Canny() returned\n");
+        fflush(stderr);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.2: Counting edge pixels...\n");
+        fflush(stderr);
+        int edgePixels = cv::countNonZero(edges);
+        totalEdgeDensity = static_cast<double>(edgePixels) / (roi.rows * roi.cols);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.2: ✓ Total edge density = %.3f\n", totalEdgeDensity);
+        fflush(stderr);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.3: Calling calculateHorizontalEdgeDensity()...\n");
+        fflush(stderr);
+        horizontalEdgeDensity = calculateHorizontalEdgeDensity(roi);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.3: ✓ Horizontal edge density = %.3f\n", horizontalEdgeDensity);
+        fflush(stderr);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.4: Calling calculateVerticalEdgeDensity()...\n");
+        fflush(stderr);
+        verticalEdgeDensity = calculateVerticalEdgeDensity(roi);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 9.4: ✓ Vertical edge density = %.3f\n", verticalEdgeDensity);
+        fflush(stderr);
     }
     
-    // Additional check: Check for horizontal lines (text lines)
-    // Count horizontal edge runs - text has many horizontal edges
-    int horizontalRuns = 0;
-    for (int y = 1; y < edges.rows - 1; y++) {
-        int runLength = 0;
-        for (int x = 1; x < edges.cols - 1; x++) {
-            if (edges.at<uchar>(y, x) > 0) {
-                runLength++;
-            } else {
-                if (runLength > 5) {  // Horizontal line > 5px
-                    horizontalRuns++;
-                }
-                runLength = 0;
-            }
+    // Use adaptive thresholds if available
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 10: Getting edge thresholds...\n");
+    fflush(stderr);
+    double horizontalThreshold = 0.1;  // Default
+    double totalThreshold = 0.15;      // Default
+    
+    if (thresholdManager) {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 10: Getting thresholds from thresholdManager...\n");
+        fflush(stderr);
+        DocumentType docType = thresholdManager->getDocumentType();
+        horizontalThreshold = thresholdManager->getHorizontalEdgeDensityThreshold(docType);
+        totalThreshold = thresholdManager->getEdgeDensityThreshold(docType);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 10: ✓ Thresholds: horizontal=%.3f, total=%.3f\n", 
+                horizontalThreshold, totalThreshold);
+        fflush(stderr);
+    } else {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 10: Using default thresholds: horizontal=%.3f, total=%.3f\n", 
+                horizontalThreshold, totalThreshold);
+        fflush(stderr);
+    }
+    
+    // Text has high horizontal edge density (text lines) AND high total edge density
+    // Empty fields have low horizontal but may have vertical (borders)
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 11: Checking edge density thresholds...\n");
+    fflush(stderr);
+    if (horizontalEdgeDensity > horizontalThreshold && totalEdgeDensity > totalThreshold) {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 11: ✓ Edge density indicates text - returning TRUE\n");
+        fflush(stderr);
+        return true;  // Text detected
+    }
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 11: ✓ Edge density OK, continuing...\n");
+    fflush(stderr);
+    
+    // Additional check: Use Hough line detection for actual text lines (expert recommendation)
+    // Only compute if edges are available (from cache or computed)
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 12: Checking Hough lines (edges.empty()=%s)...\n", 
+            edges.empty() ? "true" : "false");
+    fflush(stderr);
+    if (!edges.empty()) {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 12: Calling countHorizontalLinesWithHough() - THIS IS VERY EXPENSIVE...\n");
+        fflush(stderr);
+        int horizontalLines = countHorizontalLinesWithHough(edges, 5.0);
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 12: ✓ countHorizontalLinesWithHough() returned: %d lines (threshold: %d)\n", 
+                horizontalLines, minHorizontalLines);
+        fflush(stderr);
+        if (horizontalLines >= minHorizontalLines) {
+            fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 12: ✓ Multiple text lines detected - returning TRUE\n");
+            fflush(stderr);
+            return true;  // Multiple text lines detected
         }
-        if (runLength > 5) {
-            horizontalRuns++;
-        }
+    } else {
+        fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 12: Edges empty - skipping Hough check\n");
+        fflush(stderr);
     }
     
-    // If many horizontal runs, likely text (multiple text lines)
-    if (horizontalRuns > 3) {
-        return true;
-    }
-    
+    fprintf(stderr, "[TextRegionRefiner::regionContainsText] Step 13: ✓ All checks passed - returning FALSE (region appears empty)\n");
+    fflush(stderr);
     return false;  // Region appears empty
 }
 
@@ -638,8 +989,21 @@ QList<cv::Rect> TextRegionRefiner::findEmptyFormFields(const QList<OCRTextRegion
             continue;
         }
         
-        // Search in multiple directions: below, right, above
-        // Priority: below > right > above
+        // Use semantic information to determine search priority (expert recommendation)
+        SemanticLabelInfo semanticInfo = inferFieldTypeFromLabel(hint.text);
+        
+        // Determine search priority based on semantic information
+        QStringList searchOrder;
+        if (semanticInfo.expectedLocation == "below") {
+            searchOrder = {"below", "right", "above"};
+        } else if (semanticInfo.expectedLocation == "right") {
+            searchOrder = {"right", "below", "above"};
+        } else {
+            // Default: below > right > above
+            searchOrder = {"below", "right", "above"};
+        }
+        
+        // Search in priority order based on semantic information
         
         // 1. Search BELOW hint (most common - vertical forms)
         cv::Rect searchBelow(

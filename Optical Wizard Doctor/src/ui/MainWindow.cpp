@@ -6,6 +6,7 @@
 #include "components/widgets/SidePanelWidget.h"
 #include "components/dialogs/PreferencesDialog.h"
 #include "components/dialogs/DetectionPreviewDialog.h"
+#include "components/dialogs/MagicDetectParamsDialog.h"
 #include "utils/DetectionWorker.h"
 #include "../models/DocumentState.h"
 #include "../utils/RegionDetector.h"
@@ -517,56 +518,219 @@ void MainWindow::onInvertSelection() {
 }
 
 void MainWindow::onMagicDetect() {
-    // Check if PDF is loaded
-    if (!documentState || documentState->image.isNull()) {
-        statusBar()->showMessage("Please load a PDF first", 3000);
-        return;
-    }
+    fprintf(stderr, "[MainWindow::onMagicDetect] ========== MAGIC DETECT STARTED ==========\n");
+    fflush(stderr);
+    qDebug() << "[MainWindow::onMagicDetect] Entry point - Magic Detect button clicked";
     
-    // Lazy initialization of detection worker thread
-    if (!detectionWorker || !detectionThread) {
-        detectionThread = new QThread(this);
-        detectionWorker = new DetectionWorker();
+    try {
+        // Check if PDF is loaded
+        fprintf(stderr, "[MainWindow::onMagicDetect] Step 1: Checking if PDF is loaded...\n");
+        fflush(stderr);
+        qDebug() << "[MainWindow::onMagicDetect] documentState:" << (documentState ? "exists" : "null");
         
-        // Move worker to thread BEFORE connecting signals
-        detectionWorker->moveToThread(detectionThread);
+        if (!documentState || documentState->image.isNull()) {
+            fprintf(stderr, "[MainWindow::onMagicDetect] ERROR: No PDF loaded\n");
+            fflush(stderr);
+            statusBar()->showMessage("Please load a PDF first", 3000);
+            return;
+        }
         
-        // Connect detection worker signals
-        QObject::connect(detectionWorker, &DetectionWorker::detectionComplete, 
-                         this, &MainWindow::onDetectionComplete, Qt::QueuedConnection);
-        QObject::connect(detectionWorker, &DetectionWorker::detectionError, 
-                         this, &MainWindow::onDetectionError, Qt::QueuedConnection);
-        QObject::connect(detectionWorker, &DetectionWorker::detectionProgress, 
-                         this, &MainWindow::onDetectionProgress, Qt::QueuedConnection);
+        // Show parameter configuration dialog
+        fprintf(stderr, "[MainWindow::onMagicDetect] Step 1.5: Showing parameter configuration dialog...\n");
+        fflush(stderr);
+        DetectionParameters defaultParams;
+        MagicDetectParamsDialog* paramsDialog = new MagicDetectParamsDialog(this, defaultParams);
+        int dialogResult = paramsDialog->exec();
         
-        // Connect thread finished signal to delete worker
-        QObject::connect(detectionThread, &QThread::finished, detectionWorker, &QObject::deleteLater);
+        if (dialogResult != QDialog::Accepted || !paramsDialog->shouldRun()) {
+            fprintf(stderr, "[MainWindow::onMagicDetect] Step 1.5: User cancelled parameter dialog\n");
+            fflush(stderr);
+            delete paramsDialog;
+            return;
+        }
         
-        // Start worker thread
-        detectionThread->start();
-    }
-    
-    // Check if already detecting
-    if (isDetecting) {
-        statusBar()->showMessage("Detection already in progress...", 2000);
-        return;
-    }
-    
-    // Set flag and disable button
-    isDetecting = true;
-    if (toolbarWidget && toolbarWidget->getMagicDetectButton()) {
-        toolbarWidget->getMagicDetectButton()->setEnabled(false);
-    }
-    
+        // Get parameters from dialog
+        DetectionParameters params = paramsDialog->getParameters();
+        delete paramsDialog;
+        
+        fprintf(stderr, "[MainWindow::onMagicDetect] Step 1.5: ✓ Parameters configured - OCR overlap: %.2f, Edge density: %.3f\n",
+                params.ocrOverlapThreshold, params.edgeDensityThreshold);
+        fflush(stderr);
+        
+        // Store parameters for use in detection (we'll pass these through later)
+        currentDetectionParams = params;
+        
+        fprintf(stderr, "[MainWindow::onMagicDetect] Step 1: ✓ PDF loaded - Image size: %dx%d\n", 
+                documentState->image.width(), documentState->image.height());
+        fflush(stderr);
+        qDebug() << "[MainWindow::onMagicDetect] Image dimensions:" << documentState->image.width() << "x" << documentState->image.height();
+        
+        // Lazy initialization of detection worker thread
+        fprintf(stderr, "[MainWindow::onMagicDetect] Step 2: Checking detection worker thread...\n");
+        fflush(stderr);
+        qDebug() << "[MainWindow::onMagicDetect] detectionWorker:" << (detectionWorker ? "exists" : "null");
+        qDebug() << "[MainWindow::onMagicDetect] detectionThread:" << (detectionThread ? "exists" : "null");
+        
+        if (!detectionWorker || !detectionThread) {
+            fprintf(stderr, "[MainWindow::onMagicDetect] Step 2: Creating new detection worker thread...\n");
+            fflush(stderr);
+            qDebug() << "[MainWindow::onMagicDetect] Creating new worker thread and worker object";
+            
+            try {
+                detectionThread = new QThread(this);
+                fprintf(stderr, "[MainWindow::onMagicDetect] Step 2.1: QThread created\n");
+                fflush(stderr);
+                
+                detectionWorker = new DetectionWorker();
+                fprintf(stderr, "[MainWindow::onMagicDetect] Step 2.2: DetectionWorker created\n");
+                fflush(stderr);
+                
+                // Move worker to thread BEFORE connecting signals
+                detectionWorker->moveToThread(detectionThread);
+                fprintf(stderr, "[MainWindow::onMagicDetect] Step 2.3: Worker moved to thread\n");
+                fflush(stderr);
+                
+                // Connect detection worker signals
+                fprintf(stderr, "[MainWindow::onMagicDetect] Step 2.4: Connecting signals...\n");
+                fflush(stderr);
+                QObject::connect(detectionWorker, &DetectionWorker::detectionComplete, 
+                                 this, &MainWindow::onDetectionComplete, Qt::QueuedConnection);
+                fprintf(stderr, "[MainWindow::onMagicDetect] Step 2.4.1: detectionComplete signal connected\n");
+                fflush(stderr);
+                
+                QObject::connect(detectionWorker, &DetectionWorker::detectionError, 
+                                 this, &MainWindow::onDetectionError, Qt::QueuedConnection);
+                fprintf(stderr, "[MainWindow::onMagicDetect] Step 2.4.2: detectionError signal connected\n");
+                fflush(stderr);
+                
+                QObject::connect(detectionWorker, &DetectionWorker::detectionProgress, 
+                                 this, &MainWindow::onDetectionProgress, Qt::QueuedConnection);
+                fprintf(stderr, "[MainWindow::onMagicDetect] Step 2.4.3: detectionProgress signal connected\n");
+                fflush(stderr);
+                
+                // Connect thread finished signal to delete worker
+                QObject::connect(detectionThread, &QThread::finished, detectionWorker, &QObject::deleteLater);
+                fprintf(stderr, "[MainWindow::onMagicDetect] Step 2.5: Thread finished signal connected\n");
+                fflush(stderr);
+                
+                // Start worker thread
+                fprintf(stderr, "[MainWindow::onMagicDetect] Step 2.6: Starting worker thread...\n");
+                fflush(stderr);
+                detectionThread->start();
+                fprintf(stderr, "[MainWindow::onMagicDetect] Step 2.6: ✓ Worker thread started\n");
+                fflush(stderr);
+                qDebug() << "[MainWindow::onMagicDetect] Worker thread started successfully";
+            } catch (const std::exception& e) {
+                fprintf(stderr, "[MainWindow::onMagicDetect] EXCEPTION in worker thread setup: %s\n", e.what());
+                fflush(stderr);
+                statusBar()->showMessage(QString("Failed to initialize detection: %1").arg(e.what()), 5000);
+                isDetecting = false;
+                if (toolbarWidget && toolbarWidget->getMagicDetectButton()) {
+                    toolbarWidget->getMagicDetectButton()->setEnabled(true);
+                }
+                return;
+            } catch (...) {
+                fprintf(stderr, "[MainWindow::onMagicDetect] UNKNOWN EXCEPTION in worker thread setup\n");
+                fflush(stderr);
+                statusBar()->showMessage("Failed to initialize detection: Unknown error", 5000);
+                isDetecting = false;
+                if (toolbarWidget && toolbarWidget->getMagicDetectButton()) {
+                    toolbarWidget->getMagicDetectButton()->setEnabled(true);
+                }
+                return;
+            }
+        } else {
+            fprintf(stderr, "[MainWindow::onMagicDetect] Step 2: ✓ Worker thread already exists\n");
+            fflush(stderr);
+        }
+        
+        // Check if already detecting
+        fprintf(stderr, "[MainWindow::onMagicDetect] Step 3: Checking if already detecting...\n");
+        fflush(stderr);
+        qDebug() << "[MainWindow::onMagicDetect] isDetecting:" << isDetecting;
+        
+        if (isDetecting) {
+            fprintf(stderr, "[MainWindow::onMagicDetect] Step 3: Already detecting, returning\n");
+            fflush(stderr);
+            statusBar()->showMessage("Detection already in progress...", 2000);
+            return;
+        }
+        
+        // Set flag and disable button
+        fprintf(stderr, "[MainWindow::onMagicDetect] Step 4: Setting detection flag and disabling button...\n");
+        fflush(stderr);
+        isDetecting = true;
+        if (toolbarWidget && toolbarWidget->getMagicDetectButton()) {
+            toolbarWidget->getMagicDetectButton()->setEnabled(false);
+        }
+        fprintf(stderr, "[MainWindow::onMagicDetect] Step 4: ✓ Flag set, button disabled\n");
+        fflush(stderr);
+        
     // Start detection in worker thread (using OCR-first method)
-    statusBar()->showMessage("Detecting regions...", 0);
-    QMetaObject::invokeMethod(detectionWorker, "detectRegions", Qt::QueuedConnection,
-                              Q_ARG(QImage, documentState->image),
-                              Q_ARG(QString, QString("ocr-first")));
+    fprintf(stderr, "[MainWindow::onMagicDetect] Step 5: Invoking detectRegions in worker thread...\n");
+    fflush(stderr);
+    qDebug() << "[MainWindow::onMagicDetect] Invoking detectRegions with method: ocr-first";
+    statusBar()->showMessage("Starting detection... OCR processing may take 1-2 minutes. Please wait...", 0);
+        
+        // Store parameters in worker for access (Q_ARG doesn't work with custom types)
+        detectionWorker->setDetectionParameters(params);
+        bool invokeSuccess = QMetaObject::invokeMethod(detectionWorker, "detectRegions", Qt::QueuedConnection,
+                                  Q_ARG(QImage, documentState->image),
+                                  Q_ARG(QString, QString("ocr-first")));
+        
+        if (!invokeSuccess) {
+            fprintf(stderr, "[MainWindow::onMagicDetect] ERROR: Failed to invoke detectRegions method!\n");
+            fflush(stderr);
+            qWarning() << "[MainWindow::onMagicDetect] Failed to invoke detectRegions";
+            statusBar()->showMessage("Failed to start detection. Please try again.", 5000);
+            isDetecting = false;
+            if (toolbarWidget && toolbarWidget->getMagicDetectButton()) {
+                toolbarWidget->getMagicDetectButton()->setEnabled(true);
+            }
+            return;
+        }
+        
+        fprintf(stderr, "[MainWindow::onMagicDetect] Step 5: ✓ detectRegions invoked successfully\n");
+        fflush(stderr);
+        fprintf(stderr, "[MainWindow::onMagicDetect] ========== MAGIC DETECT INITIATED ==========\n");
+        fflush(stderr);
+        qDebug() << "[MainWindow::onMagicDetect] Magic detect initiated successfully";
+        
+    } catch (const std::exception& e) {
+        fprintf(stderr, "[MainWindow::onMagicDetect] CRITICAL EXCEPTION: %s\n", e.what());
+        fflush(stderr);
+        qCritical() << "[MainWindow::onMagicDetect] Exception:" << e.what();
+        statusBar()->showMessage(QString("Detection error: %1").arg(e.what()), 10000);
+        isDetecting = false;
+        if (toolbarWidget && toolbarWidget->getMagicDetectButton()) {
+            toolbarWidget->getMagicDetectButton()->setEnabled(true);
+        }
+    } catch (...) {
+        fprintf(stderr, "[MainWindow::onMagicDetect] CRITICAL UNKNOWN EXCEPTION\n");
+        fflush(stderr);
+        qCritical() << "[MainWindow::onMagicDetect] Unknown exception occurred";
+        statusBar()->showMessage("Detection error: Unknown exception occurred", 10000);
+        isDetecting = false;
+        if (toolbarWidget && toolbarWidget->getMagicDetectButton()) {
+            toolbarWidget->getMagicDetectButton()->setEnabled(true);
+        }
+    }
 }
 
 void MainWindow::onDetectionProgress(int percent, const QString& message) {
-    statusBar()->showMessage(QString("Detecting regions... %1% - %2").arg(percent).arg(message), 0);
+    QString progressMessage;
+    if (percent < 20) {
+        progressMessage = QString("Initializing... %1% - %2").arg(percent).arg(message);
+    } else if (percent < 50) {
+        progressMessage = QString("Processing OCR... %1% - %2").arg(percent).arg(message);
+    } else if (percent < 90) {
+        progressMessage = QString("Analyzing document... %1% - %2").arg(percent).arg(message);
+    } else {
+        progressMessage = QString("Finalizing... %1% - %2").arg(percent).arg(message);
+    }
+    statusBar()->showMessage(progressMessage, 0);
+    fprintf(stderr, "[MainWindow::onDetectionProgress] Progress: %d%% - %s\n", percent, message.toLocal8Bit().constData());
+    fflush(stderr);
 }
 
 void MainWindow::onRegionsAcceptedFromDetection(const QList<DetectedRegion>& regions) {
@@ -684,11 +848,44 @@ void MainWindow::onRegionsAcceptedFromDetection(const QList<DetectedRegion>& reg
 }
 
 void MainWindow::onDetectionError(const QString& error) {
-    statusBar()->showMessage(QString("Detection failed: %1").arg(error), 5000);
+    fprintf(stderr, "[MainWindow::onDetectionError] ========== DETECTION ERROR ==========\n");
+    fprintf(stderr, "[MainWindow::onDetectionError] Error message: %s\n", error.toLocal8Bit().constData());
+    fflush(stderr);
+    qCritical() << "[MainWindow::onDetectionError] Detection failed:" << error;
+    
+    // Convert technical error messages to user-friendly ones
+    QString userMessage;
+    QString lowerError = error.toLower();
+    
+    if (lowerError.contains("invalid image") || lowerError.contains("image is null")) {
+        userMessage = "Invalid document. Please load a valid PDF file.";
+    } else if (lowerError.contains("tesseract") || lowerError.contains("ocr")) {
+        if (lowerError.contains("initialize") || lowerError.contains("init")) {
+            userMessage = "OCR engine failed to start. Please check Tesseract installation.";
+        } else if (lowerError.contains("timeout") || lowerError.contains("too long")) {
+            userMessage = "OCR processing took too long. The document may be too complex. Try a simpler document or use manual mode.";
+        } else {
+            userMessage = "OCR processing failed. The document may be too complex or contain no readable text. Try using manual mode.";
+        }
+    } else if (lowerError.contains("detector") || lowerError.contains("create")) {
+        userMessage = "Failed to initialize detection engine. Please try again or restart the application.";
+    } else if (lowerError.contains("memory") || lowerError.contains("out of memory")) {
+        userMessage = "Not enough memory to process this document. Try closing other applications or use a smaller document.";
+    } else if (lowerError.contains("exception") || lowerError.contains("crash")) {
+        userMessage = "An unexpected error occurred during detection. Please try again. If the problem persists, try using manual mode.";
+    } else {
+        // Keep original message but make it more user-friendly
+        userMessage = QString("Detection failed: %1. Please try again or use manual mode.").arg(error);
+    }
+    
+    statusBar()->showMessage(userMessage, 10000);
     isDetecting = false;
     if (toolbarWidget && toolbarWidget->getMagicDetectButton()) {
         toolbarWidget->getMagicDetectButton()->setEnabled(true);
     }
+    fprintf(stderr, "[MainWindow::onDetectionError] User message: %s\n", userMessage.toLocal8Bit().constData());
+    fprintf(stderr, "[MainWindow::onDetectionError] ====================================\n");
+    fflush(stderr);
 }
 
 void MainWindow::onDetectionComplete(const DetectionResult& result) {
@@ -699,7 +896,7 @@ void MainWindow::onDetectionComplete(const DetectionResult& result) {
     
     // Check if any regions were detected
     if (result.totalDetected == 0) {
-        statusBar()->showMessage("No regions detected. Try adjusting detection parameters or use manual mode.", 5000);
+        statusBar()->showMessage("No regions detected. The document may not contain form fields, or OCR found no text. Try using manual mode to create regions.", 8000);
         return;
     }
     
